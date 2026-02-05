@@ -94,12 +94,12 @@ h1, h2, h3, h4, h5, h6 {
 
 .accordion-button {
     background-color: #21262d;
-    color: #c9d1d9;
+    color: #ff0000;
 }
 
 .accordion-button:not(.collapsed) {
-    background-color: #1f6feb;
-    color: #ffffff;
+    background-color: #ffd84a;
+    color: #58a6ff;
     box-shadow: none;
 }
 

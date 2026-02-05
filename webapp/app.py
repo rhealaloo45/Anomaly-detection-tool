@@ -1,6 +1,7 @@
-from flask import Flask, render_template, request, redirect, url_for
+from flask import Flask, render_template, request, redirect, url_for, send_file
 import os
 from model_utils import handler
+from report_generator import generate_report
 
 app = Flask(__name__)
 UPLOAD_FOLDER = os.path.join(os.path.dirname(__file__), 'uploads')
@@ -30,6 +31,24 @@ def upload_file():
             return render_template('index.html', error=results["error"])
             
         return render_template('results.html', results=results, filename=file.filename)
+
+@app.route('/download/<model_type>/<filename>')
+def download_report(model_type, filename):
+    filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+    if not os.path.exists(filepath):
+        return "File not found.", 404
+        
+    results = handler.analyze(filepath) # Re-analyze to get data
+    
+    if model_type == 'autoencoder':
+        anomalies = results['autoencoder']['all_anomalies']
+    elif model_type == 'isolation_forest':
+        anomalies = results['isolation_forest']['all_anomalies']
+    else:
+        return "Invalid model type.", 400
+        
+    report_path = generate_report(model_type, anomalies, filename)
+    return send_file(report_path, as_attachment=True)
 
 if __name__ == '__main__':
     app.run(debug=True, port=5000)

@@ -152,12 +152,54 @@ class ModelHandler:
             "autoencoder": {
                 "count": int(np.sum(ae_anomalies_mask)),
                 "anomalies": [],
+                "all_anomalies": []
             },
             "isolation_forest": {
                 "count": int(np.sum(iso_anomalies_mask)),
                 "anomalies": [],
+                "all_anomalies": []
             }
         }
+        
+        # --- Generate Explanations for ALL Autoencoder Anomalies ---
+        ae_diff = np.square(X_ae.values - reconstructions)
+        ae_feature_names = X_ae.columns.tolist()
+        
+        for idx in ae_anomalies.index:
+            row_idx = df.index.get_loc(idx)
+            row_diff = ae_diff[row_idx]
+            max_feat_idx = np.argmax(row_diff)
+            max_feat = ae_feature_names[max_feat_idx]
+            
+            explanation = f"Classified as anomaly due to high reconstruction error in '{max_feat}'."
+            
+            results["autoencoder"]["all_anomalies"].append({
+                "index": int(idx),
+                "log": df.loc[idx].to_dict(),
+                "error": float(ae_anomalies.loc[idx, 'error']),
+                "explanation": explanation
+            })
+            
+        # --- Generate Explanations for ALL Isolation Forest Anomalies ---
+        if not iso_anomalies.empty:
+            iso_anom_data = X_iso.loc[iso_anomalies.index]
+            shap_values_iso_all = self.iso_explainer.shap_values(iso_anom_data)
+            iso_feature_names = X_iso.columns.tolist()
+            
+            for i, idx in enumerate(iso_anomalies.index):
+                shap_val = shap_values_iso_all[i]
+                # Find feature with most negative SHAP value (pushing score towards -1)
+                min_shap_idx = np.argmin(shap_val)
+                top_feat = iso_feature_names[min_shap_idx]
+                
+                explanation = f"Classified as anomaly primarily due to '{top_feat}' pattern."
+                
+                results["isolation_forest"]["all_anomalies"].append({
+                    "index": int(idx),
+                    "log": df.loc[idx].to_dict(),
+                    "score": float(iso_anomalies.loc[idx, 'score']),
+                    "explanation": explanation
+                })
         
         # Explain Top Anomalies (Limit to 3 per model to save tokens)
         limit = 3
@@ -184,6 +226,12 @@ class ModelHandler:
                 feature_names = X_ae.columns.tolist()
                 explanation_text = self.get_openai_explanation_ae(row.to_dict(), shap_val, feature_names)
                 graph_data = self.get_top_features(shap_val, feature_names)
+
+                # Add explanation to the "all" list if it matches
+                for item in results["autoencoder"]["all_anomalies"]:
+                    if item["index"] == idx:
+                        item["explanation"] = explanation_text
+                        break
 
                 results["autoencoder"]["anomalies"].append({
                     "index": int(idx),
@@ -213,6 +261,11 @@ class ModelHandler:
                 feature_names = X_iso.columns.tolist()
                 explanation_text = self.get_openai_explanation_iso(row.to_dict(), shap_val, feature_names)
                 graph_data = self.get_top_features(shap_val, feature_names)
+                
+                for item in results["isolation_forest"]["all_anomalies"]:
+                    if item["index"] == idx:
+                        item["explanation"] = explanation_text
+                        break
                 
                 results["isolation_forest"]["anomalies"].append({
                     "index": int(idx),
