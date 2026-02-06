@@ -25,19 +25,77 @@ except ImportError:
     OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
 def parse_logs(file_path):
+    # 1. Try reading as a standard CSV (Header-based)
+    try:
+        df = pd.read_csv(file_path)
+        # Normalize columns: lowercase, strip spaces, replace special chars
+        df.columns = [str(c).strip().lower().replace(' ', '_').replace('-', '_') for c in df.columns]
+        
+        # Comprehensive mapping for standard columns
+        column_mapping = {
+            # Status
+            'code': 'status', 'status_code': 'status', 'sc_status': 'status', 's_status': 'status', 'return_code': 'status', 'response_code': 'status',
+            # Bytes
+            'size': 'bytes', 'content_length': 'bytes', 'length': 'bytes', 'sc_bytes': 'bytes', 'cs_bytes': 'bytes', 'bytes_sent': 'bytes', 'response_size': 'bytes',
+            # Time
+            'time': 'response_time', 'duration': 'response_time', 'time_taken': 'response_time', 'elapsed': 'response_time', 'latency': 'response_time',
+            # Request/URL
+            'url': 'request', 'uri': 'request', 'path': 'request', 'message': 'request', 'cs_uri_stem': 'request', 'cs_uri': 'request',
+            # Method (Optional, if request is missing)
+            'method': 'method', 'cs_method': 'method', 'request_method': 'method'
+        }
+        
+        # Apply renaming
+        df = df.rename(columns=column_mapping)
+        
+        # Handle 'method' column if 'request' is missing
+        if 'request' not in df.columns and 'method' in df.columns:
+            # Create a dummy request string from method so downstream logic works
+            df['request'] = df['method'] + ' /UNKNOWN_PATH HTTP/1.1'
+            
+        # Ensure required columns exist, fill with defaults if missing
+        if 'status' not in df.columns:
+            df['status'] = 200 # Default to success
+        if 'bytes' not in df.columns:
+            df['bytes'] = 0
+        if 'response_time' not in df.columns:
+            df['response_time'] = 0
+            
+        # Check if we have the critical 'request' column now
+        if 'request' in df.columns:
+            # Basic cleaning
+            df['status'] = pd.to_numeric(df['status'], errors='coerce').fillna(0).astype(int)
+            df['bytes'] = pd.to_numeric(df['bytes'], errors='coerce').fillna(0).astype(int)
+            df['response_time'] = pd.to_numeric(df['response_time'], errors='coerce').fillna(0).astype(int)
+            df['request'] = df['request'].astype(str)
+            
+            print("Successfully parsed as CSV with mapped columns.")
+            return df
+            
+    except Exception as e:
+        print(f"CSV parsing failed, falling back to regex: {e}")
+
+    # 2. Fallback: Parse using Syslog Regex (for raw log files)
     data = []
-    with open(file_path, 'r') as f:
-        for line in f:
-            match = LOG_PATTERN.match(line.strip())
-            if match:
-                data.append(match.groups())
+    try:
+        with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+            for line in f:
+                match = LOG_PATTERN.match(line.strip())
+                if match:
+                    data.append(match.groups())
+        
+        if data:
+            columns = [
+                "syslog_ts", "host", "process", "ip1", "ip2", "session_id", "domain", 
+                "apache_ts", "request", "status", "bytes", "response_time", "referer", "user_agent"
+            ]
+            df = pd.DataFrame(data, columns=columns)
+            return df
+    except Exception as e:
+        print(f"Regex parsing failed: {e}")
     
-    columns = [
-        "syslog_ts", "host", "process", "ip1", "ip2", "session_id", "domain", 
-        "apache_ts", "request", "status", "bytes", "response_time", "referer", "user_agent"
-    ]
-    df = pd.DataFrame(data, columns=columns)
-    return df
+    # 3. Last Resort: Return empty
+    return pd.DataFrame()
 
 class ModelHandler:
     def __init__(self):
@@ -143,10 +201,11 @@ class ModelHandler:
         
         # Isolation Forest Analysis
         X_iso = self.preprocess_iso(df)
-        iso_scores = self.iso_forest.predict(X_iso)
-        iso_anomalies_mask = iso_scores == -1
+        iso_preds = self.iso_forest.predict(X_iso)
+        iso_scores_all = self.iso_forest.decision_function(X_iso)
+        iso_anomalies_mask = iso_preds == -1
         iso_anomalies = df[iso_anomalies_mask].copy()
-        iso_anomalies['score'] = iso_scores[iso_anomalies_mask] # will be -1
+        iso_anomalies['score'] = iso_scores_all[iso_anomalies_mask]
         
         results = {
             "autoencoder": {
@@ -161,6 +220,11 @@ class ModelHandler:
             }
         }
         
+        # Calculate Critical Thresholds (Top 10% severe)
+        ae_crit_thresh = np.percentile(ae_anomalies['error'], 90) if not ae_anomalies.empty else float('inf')
+        # For Iso Forest, lower score is more anomalous. So bottom 10%.
+        iso_crit_thresh = np.percentile(iso_anomalies['score'], 10) if not iso_anomalies.empty else float('-inf')
+        
         # --- Generate Explanations for ALL Autoencoder Anomalies ---
         ae_diff = np.square(X_ae.values - reconstructions)
         ae_feature_names = X_ae.columns.tolist()
@@ -170,14 +234,16 @@ class ModelHandler:
             row_diff = ae_diff[row_idx]
             max_feat_idx = np.argmax(row_diff)
             max_feat = ae_feature_names[max_feat_idx]
+            error_val = float(ae_anomalies.loc[idx, 'error'])
             
             explanation = f"Classified as anomaly due to high reconstruction error in '{max_feat}'."
             
             results["autoencoder"]["all_anomalies"].append({
                 "index": int(idx),
                 "log": df.loc[idx].to_dict(),
-                "error": float(ae_anomalies.loc[idx, 'error']),
-                "explanation": explanation
+                "error": error_val,
+                "explanation": explanation,
+                "is_critical": error_val >= ae_crit_thresh
             })
             
         # --- Generate Explanations for ALL Isolation Forest Anomalies ---
@@ -191,14 +257,16 @@ class ModelHandler:
                 # Find feature with most negative SHAP value (pushing score towards -1)
                 min_shap_idx = np.argmin(shap_val)
                 top_feat = iso_feature_names[min_shap_idx]
+                score_val = float(iso_anomalies.loc[idx, 'score'])
                 
                 explanation = f"Classified as anomaly primarily due to '{top_feat}' pattern."
                 
                 results["isolation_forest"]["all_anomalies"].append({
                     "index": int(idx),
                     "log": df.loc[idx].to_dict(),
-                    "score": float(iso_anomalies.loc[idx, 'score']),
-                    "explanation": explanation
+                    "score": score_val,
+                    "explanation": explanation,
+                    "is_critical": score_val <= iso_crit_thresh
                 })
         
         # Explain Top Anomalies (Limit to 3 per model to save tokens)
@@ -295,10 +363,14 @@ class ModelHandler:
         shap_text = ", ".join([f"{f}: {v:.4f}" for f, v in top_features])
         
         prompt = f"""
-        Analyze this server log anomaly (Autoencoder Model).
-        Log: {log_entry['request']} (Status: {log_entry['status']})
-        Top anomalies contributors: {shap_text}
-        Explain why this is anomalous in 1 sentence.
+        You are a cybersecurity expert. Analyze this server log anomaly (Autoencoder).
+        Log Details:
+        - Request: {log_entry.get('request', 'N/A')}
+        - Status: {log_entry.get('status', 'N/A')}
+        - Key Anomalous Features: {shap_text}
+        
+        1. Identify the likely attack type (e.g., SQL Injection, XSS, Brute Force, DoS, Path Traversal) or if it's a configuration/performance issue.
+        2. Provide a 1-sentence explanation starting with the attack type/issue.
         """
         return self.call_openai(prompt)
 
@@ -306,21 +378,19 @@ class ModelHandler:
         if not OPENAI_API_KEY:
             return "OpenAI API Key missing."
             
-        contributions = []
-        for feature, shap_val in zip(feature_names, shap_values):
-            contributions.append(f"{feature}: {shap_val:.4f}")
-        # Just pick top contributors?
-        # For Iso forest, negative shap pushes towards anomaly?
-        # Let's just provide the top features by magnitude
         feat_importance = sorted(zip(feature_names, shap_values), key=lambda x: -abs(x[1]))
         top_features = feat_importance[:3]
         shap_text = ", ".join([f"{f}: {v:.4f}" for f, v in top_features])
         
         prompt = f"""
-        Analyze this server log anomaly (Isolation Forest).
-        Log: {log_entry['request']} (Status: {log_entry['status']})
-        Feature Analysis: {shap_text}
-        Explain why this is anomalous in 1 sentence.
+        You are a cybersecurity expert. Analyze this server log anomaly (Isolation Forest).
+        Log Details:
+        - Request: {log_entry.get('request', 'N/A')}
+        - Status: {log_entry.get('status', 'N/A')}
+        - Feature Analysis: {shap_text}
+        
+        1. Identify the likely attack type (e.g., SQL Injection, XSS, Brute Force, DoS, Path Traversal) or if it's a configuration/performance issue.
+        2. Provide a 1-sentence explanation starting with the attack type/issue.
         """
         return self.call_openai(prompt)
 
