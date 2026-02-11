@@ -12,6 +12,7 @@ import openai
 # Constants
 MODELS_DIR = os.path.join(os.path.dirname(__file__), 'models')
 LOG_FILE_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'synthetic_logs_10k.csv')
+import json
 
 # Regex Pattern (Same as train_models.py)
 LOG_PATTERN = re.compile(r'<150>(\w{3}\s+\d+\s+\d{2}:\d{2}:\d{2})\s+(\S+)\s+(\S+):\s+(\S+)\s+(\S+)\s+(\d+)\s+(\S+)\s+-\s+-\s+\[(.*?)\]\s+"(.*?)"\s+(\d+)\s+(\S+)\s+(\d+)\s+"(.*?)"\s+"(.*?)"')
@@ -269,76 +270,73 @@ class ModelHandler:
                     "is_critical": score_val <= iso_crit_thresh
                 })
         
-        # Explain Top Anomalies (Limit to 3 per model to save tokens)
-        limit = 3
+        # --- Generate Explanations for ALL Anomalies ---
+        # Note: This loops through ALL detected anomalies to get AI analysis.
         
         # AE Explanations
         if not ae_anomalies.empty:
-            # Sort by error descending
-            top_ae_idx = ae_anomalies.sort_values('error', ascending=False).head(limit).index
-            
-            for idx in top_ae_idx:
+            for idx in ae_anomalies.index:
                 row = df.loc[idx]
-                instance = X_ae.iloc[[idx]] # double brackets to keep as DF
-                # We need iloc index relative to X_ae which matches df index if we didn't drop rows
-                # shap needs the row in same format as background
-                # Note: X_ae has same index as df.
-                # However, shap_values might return a list for multiple outputs? KernelExplainer returns array.
-                shap_vals = self.ae_explainer.shap_values(instance)
-                # shap_vals is usually [array] for regression output of function? 
-                # Our predict_fn returns scalar MSE. So shap_vals should be array of shape (1, n_features)
+                instance = X_ae.iloc[[idx]] 
                 
+                shap_vals = self.ae_explainer.shap_values(instance)
                 shap_val = shap_vals[0] if isinstance(shap_vals, list) else shap_vals
                 shap_val = shap_val.flatten()
                 
                 feature_names = X_ae.columns.tolist()
-                explanation_text = self.get_openai_explanation_ae(row.to_dict(), shap_val, feature_names)
+                ai_analysis = self.get_ai_analysis_ae(row.to_dict(), shap_val, feature_names)
                 graph_data = self.get_top_features(shap_val, feature_names)
 
-                # Add explanation to the "all" list if it matches
+                # Update "all_anomalies" list (used for report)
                 for item in results["autoencoder"]["all_anomalies"]:
                     if item["index"] == idx:
-                        item["explanation"] = explanation_text
+                        item["explanation"] = ai_analysis["explanation"]
+                        item["attack_type"] = ai_analysis["attack_type"]
+                        item["severity"] = ai_analysis["severity"]
+                        item["llm_prediction"] = ai_analysis["llm_prediction"]
                         break
 
+                # Add to detailed anomalies list (for UI display)
                 results["autoencoder"]["anomalies"].append({
                     "index": int(idx),
                     "log": row.to_dict(),
                     "error": float(ae_anomalies.loc[idx, 'error']),
-                    "explanation": explanation_text,
+                    "explanation": ai_analysis["explanation"],
+                    "attack_type": ai_analysis["attack_type"],
+                    "severity": ai_analysis["severity"],
+                    "llm_prediction": ai_analysis["llm_prediction"],
                     "graph_data": graph_data
                 })
 
         # Iso Forest Explanations
         if not iso_anomalies.empty:
-            # Sort... well all are -1, but decision_function gives score. 
-            # We didn't calc decision_function, but predict gives -1.
-            # Let's just take first 3.
-            top_iso_idx = iso_anomalies.head(limit).index
+            # Calculate SHAP values for all anomalies at once if possible or loop
+            # Here we loop to keep it simple and aligned
             
-            # TreeExplainer is fast
-            # We can compute shap for all new data and pick indices
-            # Or just compute for the rows we want? TreeExplainer needs full model.
-            # It's better to pass the specific rows.
+            shap_values_iso = self.iso_explainer.shap_values(X_iso.loc[iso_anomalies.index])
             
-            shap_values_iso = self.iso_explainer.shap_values(X_iso.loc[top_iso_idx])
-            
-            for i, idx in enumerate(top_iso_idx):
+            for i, idx in enumerate(iso_anomalies.index):
                 row = df.loc[idx]
                 shap_val = shap_values_iso[i]
                 feature_names = X_iso.columns.tolist()
-                explanation_text = self.get_openai_explanation_iso(row.to_dict(), shap_val, feature_names)
+                ai_analysis = self.get_ai_analysis_iso(row.to_dict(), shap_val, feature_names)
                 graph_data = self.get_top_features(shap_val, feature_names)
                 
                 for item in results["isolation_forest"]["all_anomalies"]:
                     if item["index"] == idx:
-                        item["explanation"] = explanation_text
+                        item["explanation"] = ai_analysis["explanation"]
+                        item["attack_type"] = ai_analysis["attack_type"]
+                        item["severity"] = ai_analysis["severity"]
+                        item["llm_prediction"] = ai_analysis["llm_prediction"]
                         break
                 
                 results["isolation_forest"]["anomalies"].append({
                     "index": int(idx),
                     "log": row.to_dict(),
-                    "explanation": explanation_text,
+                    "explanation": ai_analysis["explanation"],
+                    "attack_type": ai_analysis["attack_type"],
+                    "severity": ai_analysis["severity"],
+                    "llm_prediction": ai_analysis["llm_prediction"],
                     "graph_data": graph_data
                 })
                 
@@ -353,9 +351,9 @@ class ModelHandler:
             "values": [float(p[1]) for p in top_pairs]
         }
 
-    def get_openai_explanation_ae(self, log_entry, shap_values, feature_names):
+    def get_ai_analysis_ae(self, log_entry, shap_values, feature_names):
         if not OPENAI_API_KEY:
-            return "OpenAI API Key missing."
+            return self.get_dummy_analysis("OpenAI API Key missing.")
         
         # Summarize top 3 features contributing to error
         feat_importance = sorted(zip(feature_names, shap_values), key=lambda x: -abs(x[1]))
@@ -364,19 +362,23 @@ class ModelHandler:
         
         prompt = f"""
         You are a cybersecurity expert. Analyze this server log anomaly (Autoencoder).
-        Log Details:
-        - Request: {log_entry.get('request', 'N/A')}
-        - Status: {log_entry.get('status', 'N/A')}
-        - Key Anomalous Features: {shap_text}
         
-        1. Identify the likely attack type (e.g., SQL Injection, XSS, Brute Force, DoS, Path Traversal) or if it's a configuration/performance issue.
-        2. Provide a 1-sentence explanation starting with the attack type/issue.
+        Log Details: {log_entry}
+        Key Anomalous Features: {shap_text}
+        
+        Provide a JSON response with the following keys:
+        - "attack_type": Short name of the attack/issue (e.g., "SQL Injection", "Brute Force", "Data Exfiltration", "Suspicious User Agent", or "Configuration Issue").
+        - "severity": One of ["Critical", "High", "Medium", "Low"].
+        - "llm_prediction": A detailed prediction of what kind of attack has taken place based purely on the log analysis.
+        - "explanation": A clear 1-2 sentence explanation of why this was flagged, referencing the specific features or log content logic.
+        
+        Return ONLY valid JSON.
         """
-        return self.call_openai(prompt)
+        return self.call_openai_json(prompt)
 
-    def get_openai_explanation_iso(self, log_entry, shap_values, feature_names):
+    def get_ai_analysis_iso(self, log_entry, shap_values, feature_names):
         if not OPENAI_API_KEY:
-            return "OpenAI API Key missing."
+            return self.get_dummy_analysis("OpenAI API Key missing.")
             
         feat_importance = sorted(zip(feature_names, shap_values), key=lambda x: -abs(x[1]))
         top_features = feat_importance[:3]
@@ -384,27 +386,54 @@ class ModelHandler:
         
         prompt = f"""
         You are a cybersecurity expert. Analyze this server log anomaly (Isolation Forest).
-        Log Details:
-        - Request: {log_entry.get('request', 'N/A')}
-        - Status: {log_entry.get('status', 'N/A')}
-        - Feature Analysis: {shap_text}
         
-        1. Identify the likely attack type (e.g., SQL Injection, XSS, Brute Force, DoS, Path Traversal) or if it's a configuration/performance issue.
-        2. Provide a 1-sentence explanation starting with the attack type/issue.
+        Log Details: {log_entry}
+        Feature Analysis: {shap_text}
+        
+        Provide a JSON response with the following keys:
+        - "attack_type": Short name of the attack/issue (e.g., "SQL Injection", "Brute Force", "Data Exfiltration", "Suspicious User Agent", or "Configuration Issue").
+        - "severity": One of ["Critical", "High", "Medium", "Low"].
+        - "llm_prediction": A detailed prediction of what kind of attack has taken place based purely on the log analysis.
+        - "explanation": A clear 1-2 sentence explanation of why this was flagged, referencing the specific features or log content logic.
+        
+        Return ONLY valid JSON.
         """
-        return self.call_openai(prompt)
+        return self.call_openai_json(prompt)
 
-    def call_openai(self, prompt):
+    def get_dummy_analysis(self, message):
+        return {
+            "attack_type": "Unknown",
+            "severity": "Low",
+            "llm_prediction": message,
+            "explanation": message
+        }
+
+    def call_openai_json(self, prompt):
+        import json
         try:
             client = openai.OpenAI(api_key=OPENAI_API_KEY)
             response = client.chat.completions.create(
                 model="gpt-3.5-turbo",
                 messages=[{"role": "user", "content": prompt}],
-                max_tokens=60
+                max_tokens=300,
+                temperature=0.3
             )
-            return response.choices[0].message.content.strip()
+            content = response.choices[0].message.content.strip()
+            # Try parsing JSON
+            try:
+                # Handle cases where LLM might wrap in markdown code blocks
+                if "```json" in content:
+                    content = content.split("```json")[1].split("```")[0].strip()
+                elif "```" in content:
+                    content = content.split("```")[1].strip()
+                
+                return json.loads(content)
+            except json.JSONDecodeError:
+                # Fallback if valid JSON isn't returned
+                return self.get_dummy_analysis(f"Failed to parse AI response: {content[:50]}...")
+                
         except Exception as e:
-            return f"Error: {str(e)}"
+            return self.get_dummy_analysis(f"Error: {str(e)}")
 
 # Singleton instance
 handler = ModelHandler()

@@ -81,7 +81,26 @@
                                         <div class="mb-3">
                                             <span class="badge bg-secondary">Status: {{ item.log.status }}</span>
                                             <span class="badge bg-secondary">Bytes: {{ item.log.bytes }}</span>
+                                            {% if item.severity %}
+                                            <span
+                                                class="badge {% if item.severity == 'Critical' %}bg-danger{% elif item.severity == 'High' %}bg-warning text-dark{% else %}bg-info text-dark{% endif %}">
+                                                Severity: {{ item.severity }}
+                                            </span>
+                                            {% endif %}
+                                            {% if item.attack_type %}
+                                            <span class="badge bg-dark">Type: {{ item.attack_type }}</span>
+                                            {% endif %}
                                         </div>
+
+                                        {% if item.llm_prediction %}
+                                        <div class="alert alert-primary border-primary d-flex align-items-start mb-2">
+                                            <i class="bi bi-robot me-2 mt-1"></i>
+                                            <div>
+                                                <strong>LLM Prediction:</strong> {{ item.llm_prediction }}
+                                            </div>
+                                        </div>
+                                        {% endif %}
+
                                         <div class="alert alert-warning border-warning d-flex align-items-start">
                                             <i class="bi bi-lightbulb-fill me-2 mt-1"></i>
                                             <div>
@@ -150,7 +169,26 @@
                                         <div class="mb-3">
                                             <span class="badge bg-secondary">Status: {{ item.log.status }}</span>
                                             <span class="badge bg-secondary">Bytes: {{ item.log.bytes }}</span>
+                                            {% if item.severity %}
+                                            <span
+                                                class="badge {% if item.severity == 'Critical' %}bg-danger{% elif item.severity == 'High' %}bg-warning text-dark{% else %}bg-info text-dark{% endif %}">
+                                                Severity: {{ item.severity }}
+                                            </span>
+                                            {% endif %}
+                                            {% if item.attack_type %}
+                                            <span class="badge bg-dark">Type: {{ item.attack_type }}</span>
+                                            {% endif %}
                                         </div>
+
+                                        {% if item.llm_prediction %}
+                                        <div class="alert alert-primary border-primary d-flex align-items-start mb-2">
+                                            <i class="bi bi-robot me-2 mt-1"></i>
+                                            <div>
+                                                <strong>LLM Prediction:</strong> {{ item.llm_prediction }}
+                                            </div>
+                                        </div>
+                                        {% endif %}
+
                                         <div class="alert alert-warning border-warning d-flex align-items-start">
                                             <i class="bi bi-lightbulb-fill me-2 mt-1"></i>
                                             <div>
