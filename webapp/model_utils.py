@@ -188,9 +188,14 @@ class ModelHandler:
         return df_new[features]
 
     def analyze(self, file_path):
+        import time
+        start_time = time.time()
+        
         df = parse_logs(file_path)
         if df.empty:
             return {"error": "No data found or parsing failed."}
+            
+        total_logs = len(df)
         
         # Autoencoder Analysis
         X_ae = self.preprocess_ae(df)
@@ -218,7 +223,8 @@ class ModelHandler:
                 "count": int(np.sum(iso_anomalies_mask)),
                 "anomalies": [],
                 "all_anomalies": []
-            }
+            },
+            "total_logs": total_logs
         }
         
         # Calculate Critical Thresholds (Top 10% severe)
@@ -226,7 +232,7 @@ class ModelHandler:
         # For Iso Forest, lower score is more anomalous. So bottom 10%.
         iso_crit_thresh = np.percentile(iso_anomalies['score'], 10) if not iso_anomalies.empty else float('-inf')
         
-        # --- Generate Explanations for ALL Autoencoder Anomalies ---
+        # --- Generate Initial Explanations for ALL Autoencoder Anomalies ---
         ae_diff = np.square(X_ae.values - reconstructions)
         ae_feature_names = X_ae.columns.tolist()
         
@@ -247,7 +253,7 @@ class ModelHandler:
                 "is_critical": error_val >= ae_crit_thresh
             })
             
-        # --- Generate Explanations for ALL Isolation Forest Anomalies ---
+        # --- Generate Initial Explanations for ALL Isolation Forest Anomalies ---
         if not iso_anomalies.empty:
             iso_anom_data = X_iso.loc[iso_anomalies.index]
             shap_values_iso_all = self.iso_explainer.shap_values(iso_anom_data)
@@ -270,7 +276,7 @@ class ModelHandler:
                     "is_critical": score_val <= iso_crit_thresh
                 })
         
-        # --- Generate Explanations for ALL Anomalies ---
+        # --- Generate Deep AI Explanations for ALL Anomalies ---
         # Note: This loops through ALL detected anomalies to get AI analysis.
         
         # AE Explanations
@@ -310,14 +316,12 @@ class ModelHandler:
 
         # Iso Forest Explanations
         if not iso_anomalies.empty:
-            # Calculate SHAP values for all anomalies at once if possible or loop
-            # Here we loop to keep it simple and aligned
-            
-            shap_values_iso = self.iso_explainer.shap_values(X_iso.loc[iso_anomalies.index])
+            # We already calculated initial shap values above, but need to re-loop for AI calls and graph data
+            # Or reuse shap_values_iso_all from above
             
             for i, idx in enumerate(iso_anomalies.index):
                 row = df.loc[idx]
-                shap_val = shap_values_iso[i]
+                shap_val = shap_values_iso_all[i]
                 feature_names = X_iso.columns.tolist()
                 ai_analysis = self.get_ai_analysis_iso(row.to_dict(), shap_val, feature_names)
                 graph_data = self.get_top_features(shap_val, feature_names)
@@ -340,6 +344,8 @@ class ModelHandler:
                     "graph_data": graph_data
                 })
                 
+        end_time = time.time()
+        results["duration"] = round(end_time - start_time, 2)
         return results
 
     def get_top_features(self, shap_values, feature_names, top_n=5):
