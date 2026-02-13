@@ -128,21 +128,40 @@ class ModelHandler:
         # We need some background data for AE KernelExplainer
         # Load a small sample from synthetic logs
         if os.path.exists(LOG_FILE_PATH):
-            df = parse_logs(LOG_FILE_PATH)
-            # Process for AE
-            df_ae = self.preprocess_ae(df)
-            self.ae_background = shap.sample(df_ae, 50)
-            
-            def predict_error(X):
-                if isinstance(X, pd.DataFrame):
-                    X = X.values
-                rec = self.ae_model.predict(X, verbose=0)
-                return np.mean(np.square(X - rec), axis=1)
+            try:
+                df = parse_logs(LOG_FILE_PATH)
+                # Process for AE
+                df_ae = self.preprocess_ae(df)
+                
+                if not df_ae.empty:
+                    self.ae_background = shap.sample(df_ae, 50)
+                    
+                    def predict_error(X):
+                        # Ensure X is numpy array
+                        if isinstance(X, pd.DataFrame):
+                            X = X.values
+                        
+                        # Predict
+                        rec = self.ae_model.predict(X, verbose=0)
+                        
+                        # Calculate MSE per sample
+                        errors = np.mean(np.square(X - rec), axis=1)
+                        return np.array(errors).flatten()
 
-            self.ae_explainer = shap.KernelExplainer(predict_error, self.ae_background)
+                    self.ae_explainer = shap.KernelExplainer(predict_error, self.ae_background)
+                else:
+                    print("Warning: Background data for AE explainer is empty.")
+                    self.ae_explainer = None
+            except Exception as e:
+                print(f"Failed to init AE explainer: {e}")
+                self.ae_explainer = None
         
         # Iso Forest Explainer
-        self.iso_explainer = shap.TreeExplainer(self.iso_forest)
+        try:
+            self.iso_explainer = shap.TreeExplainer(self.iso_forest)
+        except Exception as e:
+            print(f"Failed to init Iso Forest explainer: {e}")
+            self.iso_explainer = None
 
     def preprocess_ae(self, df):
         df_new = df.copy()
@@ -284,12 +303,22 @@ class ModelHandler:
             for idx in ae_anomalies.index:
                 row = df.loc[idx]
                 instance = X_ae.iloc[[idx]] 
-                
-                shap_vals = self.ae_explainer.shap_values(instance)
-                shap_val = shap_vals[0] if isinstance(shap_vals, list) else shap_vals
-                shap_val = shap_val.flatten()
-                
                 feature_names = X_ae.columns.tolist()
+                
+                shap_val = np.zeros(len(feature_names)) # Default fallback
+                
+                if self.ae_explainer:
+                    try:
+                        shap_vals = self.ae_explainer.shap_values(instance)
+                        shap_val = shap_vals[0] if isinstance(shap_vals, list) else shap_vals
+                        shap_val = shap_val.flatten()
+                    except Exception as e:
+                        print(f"SHAP calculation failed for AE anomaly {idx}: {e}")
+                        # Fallback: use raw reconstruction error as proxy for importance if SHAP fails
+                        # row_diff computed earlier is a good fallback
+                        row_iloc = df.index.get_loc(idx)
+                        shap_val = ae_diff[row_iloc] 
+                
                 ai_analysis = self.get_ai_analysis_ae(row.to_dict(), shap_val, feature_names)
                 graph_data = self.get_top_features(shap_val, feature_names)
 
@@ -370,6 +399,7 @@ class ModelHandler:
         You are a cybersecurity expert. Analyze this server log anomaly (Autoencoder).
         
         Log Details: {log_entry}
+        
         Key Anomalous Features: {shap_text}
         
         Provide a JSON response with the following keys:
