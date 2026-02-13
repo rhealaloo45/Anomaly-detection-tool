@@ -4,7 +4,6 @@ import json
 import numpy as np
 from model_utils import handler
 from report_generator import generate_report
-from train_models import retrain_models
 
 app = Flask(__name__)
 UPLOAD_FOLDER = os.path.join(os.path.dirname(__file__), 'uploads')
@@ -29,35 +28,6 @@ class NumpyEncoder(json.JSONEncoder):
 @app.route('/')
 def index():
     return render_template('index.html')
-
-@app.route('/admin')
-def admin():
-    return render_template('admin.html')
-
-@app.route('/admin/retrain', methods=['POST'])
-def retrain():
-    if 'file' not in request.files:
-        return render_template('admin.html', error="No file part")
-    file = request.files['file']
-    if file.filename == '':
-        return render_template('admin.html', error="No selected file")
-    
-    if file:
-        filepath = os.path.join(app.config['UPLOAD_FOLDER'], 'training_' + file.filename)
-        file.save(filepath)
-        
-        # Call retraining logic
-        result = retrain_models(filepath)
-        
-        if result['success']:
-            # Reload models in memory to reflect changes immediately
-            try:
-                handler.__init__() 
-                return render_template('admin.html', message=f"Success! {result['message']}")
-            except Exception as e:
-                return render_template('admin.html', error=f"Training successful, but model reload failed: {str(e)}")
-        else:
-            return render_template('admin.html', error=f"Training Failed: {result['error']}")
 
 @app.route('/upload', methods=['POST'])
 def upload_file():
