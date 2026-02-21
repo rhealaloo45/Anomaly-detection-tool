@@ -1,4 +1,9 @@
 keys.py
 .venv/
+venv/
+venv_universal/
 __pycache__/
 .ipynb_checkpoints/
+webapp/uploads/
+*.csv
+*.pdf

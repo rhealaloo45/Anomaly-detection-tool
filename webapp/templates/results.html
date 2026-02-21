@@ -9,11 +9,9 @@
         href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='black'/%3E%3Cpath d='M6 8 L14 16 L6 24 M16 24 L26 24' stroke='%2300ff00' stroke-width='4' fill='none'/%3E%3C/svg%3E">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css" rel="stylesheet">
-    <!-- Google Fonts for Cyber Aesthetic -->
     <link
         href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Inter:wght@400;600;800&display=swap"
         rel="stylesheet">
-    <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         :root {
@@ -24,7 +22,6 @@
             --cyber-accent: #58a6ff;
             --cyber-danger: #da3633;
             --cyber-success: #238636;
-            --cyber-code: #ff7b72;
         }
 
         body {
@@ -47,7 +44,6 @@
             font-family: 'JetBrains Mono', monospace;
         }
 
-        /* Cyber Cards */
         .stat-card {
             background: linear-gradient(145deg, #1c2128, #161b22);
             border: 1px solid var(--cyber-border);
@@ -65,7 +61,6 @@
             border-left-color: var(--cyber-danger);
         }
 
-        /* Table Styling */
         .cyber-table {
             background-color: var(--cyber-card);
             border: 1px solid var(--cyber-border);
@@ -83,7 +78,6 @@
             cursor: pointer;
         }
 
-        /* Tabs */
         .nav-pills .nav-link {
             color: var(--cyber-text);
             border: 1px solid transparent;
@@ -97,7 +91,6 @@
             color: #ffffff;
         }
 
-        /* Modal */
         .modal-content {
             background-color: #1c2128;
             border: 1px solid var(--cyber-border);
@@ -115,24 +108,15 @@
             background-color: #1f6feb;
             color: white;
         }
-
-        .severity-dot {
-            height: 10px;
-            width: 10px;
-            border-radius: 50%;
-            display: inline-block;
-            margin-right: 6px;
-        }
     </style>
 </head>
 
 <body>
-
     <nav class="navbar navbar-expand-lg navbar-dark bg-dark border-bottom border-secondary mb-4 p-3">
         <div class="container-fluid">
             <a class="navbar-brand mono-font d-flex align-items-center" href="/">
-                <i class="bi bi-shield-lock-fill text-success fs-4 me-2"></i>
-                CYB<span class="text-primary">SEC</span> TOOLS
+                <i class="bi bi-shield-lock-fill text-success fs-4 me-2"></i> CYB<span class="text-primary">SEC</span>
+                TOOLS
             </a>
             <div class="d-flex">
                 <a href="/" class="btn btn-outline-secondary btn-sm me-2"><i class="bi bi-arrow-counterclockwise"></i>
@@ -143,10 +127,10 @@
                         <i class="bi bi-download"></i> Reports
                     </button>
                     <ul class="dropdown-menu dropdown-menu-dark">
-                        <li><a class="dropdown-item" href="/download/autoencoder/{{ filename }}">Autoencoder Report
-                                (PDF)</a></li>
-                        <li><a class="dropdown-item" href="/download/isolation_forest/{{ filename }}">IsoForest Report
-                                (PDF)</a></li>
+                        <li><a class="dropdown-item" href="/download/autoencoder/{{ filename }}">Autoencoder Report</a>
+                        </li>
+                        <li><a class="dropdown-item" href="/download/isolation_forest/{{ filename }}">IsoForest
+                                Report</a></li>
                     </ul>
                 </div>
             </div>
@@ -156,6 +140,7 @@
     <div class="container-fluid px-4">
 
         <!-- Header -->
+        <!-- Existing Header layout... -->
         <div class="row mb-4 align-items-end">
             <div class="col-md-6">
                 <h6 class="text-muted text-uppercase fw-bold ls-1 mb-1">Analysis Report</h6>
@@ -164,15 +149,16 @@
             <div class="col-md-6 text-md-end">
                 <div class="d-inline-flex gap-3 align-items-center">
                     <div class="text-end border-end border-secondary pe-3">
-                        <small class="text-muted d-block uppercase fw-bold" style="font-size: 0.7rem;">LOGS
-                            ANALYZED</small>
+                        <small class="text-muted d-block uppercase fw-bold" style="font-size: 0.7rem;">LOGS</small>
                         <span class="fw-bold text-white mono-font">{{ results.total_logs }}</span>
                     </div>
+                    {% if results.duration %}
                     <div class="text-end border-end border-secondary pe-3">
-                        <small class="text-muted d-block uppercase fw-bold" style="font-size: 0.7rem;">DURATION</small>
+                        <small class="text-muted d-block uppercase fw-bold" style="font-size: 0.7rem;">GENERATED
+                            IN</small>
                         <span class="fw-bold text-white mono-font">{{ results.duration }}s</span>
                     </div>
-
+                    {% endif %}
                     {% set ae_count = results.autoencoder.count if results.autoencoder else 0 %}
                     {% set iso_count = results.isolation_forest.count if results.isolation_forest else 0 %}
                     <div class="text-end">
@@ -182,126 +168,194 @@
             </div>
         </div>
 
-        <!-- Top Stats Cards -->
-        <div class="row g-4 mb-4">
-            <!-- Autoencoder Stat -->
-            <div class="col-md-6">
-                <div class="card stat-card h-100 p-3">
-                    <div class="d-flex justify-content-between align-items-center">
-                        <div>
-                            <h6 class="text-secondary text-uppercase fw-bold mb-1" style="font-size: 0.8rem;">
-                                Autoencoder Model</h6>
-                            <h2 class="display-6 fw-bold text-white mb-0">{{ results.autoencoder.count }}</h2>
-                            <p class="text-muted mt-1 mb-0 small" style="font-size: 0.8rem;">Reconstruction Error
-                                Anomalies</p>
+        <!-- Detected Attack Clusters Section (NEW) -->
+        <h4 class="fw-bold text-white mb-3 mt-4"><i class="bi bi-diagram-3 me-2"></i>Detected Attack Clusters</h4>
+        <p class="text-muted small">Anomalies were clustered to identify common attack patterns and minimize
+            investigation time.</p>
+
+        <ul class="nav nav-pills mb-3" id="clusterTab" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active" id="ae-cluster-tab" data-bs-toggle="pill"
+                    data-bs-target="#ae-cluster-content" type="button" role="tab">Autoencoder Clusters</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="iso-cluster-tab" data-bs-toggle="pill"
+                    data-bs-target="#iso-cluster-content" type="button" role="tab">Isolation Forest Clusters</button>
+            </li>
+        </ul>
+
+        <div class="tab-content" id="clusterTabContent">
+            <!-- Autoencoder Clusters -->
+            <div class="tab-pane fade show active" id="ae-cluster-content" role="tabpanel">
+                <div class="row">
+                    <div class="col-md-7">
+                        <div class="row g-3">
+                            {% for cluster in results.autoencoder.clusters %}
+                            <div class="col-12">
+                                <div class="card stat-card p-3">
+                                    <div class="d-flex justify-content-between align-items-start">
+                                        <div>
+                                            <h5 class="text-white fw-bold mb-1">{{ cluster.attack_type }}</h5>
+                                            <div class="d-flex gap-2 align-items-center mt-2 flex-wrap">
+                                                <span class="badge bg-secondary"><i class="bi bi-hash"></i> {{
+                                                    cluster.size }} logs</span>
+                                                {% if cluster.severity == 'Critical' %}<span
+                                                    class="badge bg-danger">Critical</span>
+                                                {% elif cluster.severity == 'High' %}<span
+                                                    class="badge bg-warning text-dark">High</span>
+                                                {% elif cluster.severity == 'Medium' %}<span
+                                                    class="badge bg-info text-dark">Medium</span>
+                                                {% else %}<span class="badge bg-secondary">Low</span>{% endif %}
+                                                <span class="badge border border-secondary text-muted">Confidence: {{
+                                                    cluster.confidence | float | round(2) }}</span>
+                                            </div>
+                                            <p class="text-muted mt-2 mb-1 small"><strong>Reasoning:</strong> {{
+                                                cluster.reasoning }}</p>
+                                            <p class="text-muted mb-0 small"><strong>Common Pattern:</strong> {{
+                                                cluster.common_pattern }}</p>
+                                        </div>
+                                        <button class="btn btn-sm btn-outline-primary ms-3"
+                                            onclick="showClusterLogs('{{ cluster.cluster_id }}', 'ae')">
+                                            View {{ cluster.size }} Logs
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                            {% else %}
+                            <div class="col-12">
+                                <p class="text-muted p-4 text-center border border-secondary rounded">No clusters
+                                    detected.</p>
+                            </div>
+                            {% endfor %}
                         </div>
-                        <div class="bg-dark rounded-circle p-2 border border-secondary">
-                            <i class="bi bi-cpu fs-3 text-primary"></i>
+                    </div>
+                    <div class="col-md-5">
+                        <div class="card cyber-table h-100 p-3">
+                            <h6 class="text-white fw-bold">Cluster Projection (PCA)</h6>
+                            <div style="height: 300px; width: 100%;">
+                                <canvas id="pcaChartAe"></canvas>
+                            </div>
                         </div>
                     </div>
                 </div>
             </div>
 
-            <!-- Isolation Forest Stat -->
-            <div class="col-md-6">
-                <div class="card stat-card danger-border h-100 p-3">
-                    <div class="d-flex justify-content-between align-items-center">
-                        <div>
-                            <h6 class="text-secondary text-uppercase fw-bold mb-1" style="font-size: 0.8rem;">Isolation
-                                Forest Model</h6>
-                            <h2 class="display-6 fw-bold text-white mb-0">{{ results.isolation_forest.count }}</h2>
-                            <p class="text-muted mt-1 mb-0 small" style="font-size: 0.8rem;">Forest Isolation Anomalies
-                            </p>
+            <!-- Isolation Forest Clusters -->
+            <div class="tab-pane fade" id="iso-cluster-content" role="tabpanel">
+                <div class="row">
+                    <div class="col-md-7">
+                        <div class="row g-3">
+                            {% for cluster in results.isolation_forest.clusters %}
+                            <div class="col-12">
+                                <div class="card stat-card danger-border p-3">
+                                    <div class="d-flex justify-content-between align-items-start">
+                                        <div>
+                                            <h5 class="text-white fw-bold mb-1">{{ cluster.attack_type }}</h5>
+                                            <div class="d-flex gap-2 align-items-center mt-2 flex-wrap">
+                                                <span class="badge bg-secondary"><i class="bi bi-hash"></i> {{
+                                                    cluster.size }} logs</span>
+                                                {% if cluster.severity == 'Critical' %}<span
+                                                    class="badge bg-danger">Critical</span>
+                                                {% elif cluster.severity == 'High' %}<span
+                                                    class="badge bg-warning text-dark">High</span>
+                                                {% elif cluster.severity == 'Medium' %}<span
+                                                    class="badge bg-info text-dark">Medium</span>
+                                                {% else %}<span class="badge bg-secondary">Low</span>{% endif %}
+                                                <span class="badge border border-secondary text-muted">Confidence: {{
+                                                    cluster.confidence | float | round(2) }}</span>
+                                            </div>
+                                            <p class="text-muted mt-2 mb-1 small"><strong>Reasoning:</strong> {{
+                                                cluster.reasoning }}</p>
+                                            <p class="text-muted mb-0 small"><strong>Common Pattern:</strong> {{
+                                                cluster.common_pattern }}</p>
+                                        </div>
+                                        <button class="btn btn-sm btn-outline-primary ms-3"
+                                            onclick="showClusterLogs('{{ cluster.cluster_id }}', 'iso')">
+                                            View {{ cluster.size }} Logs
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                            {% else %}
+                            <div class="col-12">
+                                <p class="text-muted p-4 text-center border border-secondary rounded">No clusters
+                                    detected.</p>
+                            </div>
+                            {% endfor %}
                         </div>
-                        <div class="bg-dark rounded-circle p-2 border border-secondary">
-                            <i class="bi bi-tree fs-3 text-danger"></i>
+                    </div>
+                    <div class="col-md-5">
+                        <div class="card cyber-table h-100 p-3">
+                            <h6 class="text-white fw-bold">Cluster Projection (PCA)</h6>
+                            <div style="height: 300px; width: 100%;">
+                                <canvas id="pcaChartIso"></canvas>
+                            </div>
                         </div>
                     </div>
                 </div>
             </div>
         </div>
 
-        <!-- Filter Controls -->
-        <div class="d-flex justify-content-between align-items-center mb-3">
-            <h4 class="fw-bold text-white mb-0"><i class="bi bi-list-columns-reverse me-2"></i>Threat Details</h4>
+        <hr class="border-secondary my-5">
 
-            <ul class="nav nav-pills" id="modelTab" role="tablist">
-                <li class="nav-item" role="presentation">
-                    <button class="nav-link active" id="ae-tab" data-bs-toggle="pill" data-bs-target="#ae-content"
-                        type="button" role="tab">
-                        Autoencoder
-                    </button>
-                </li>
-                <li class="nav-item" role="presentation">
-                    <button class="nav-link" id="iso-tab" data-bs-toggle="pill" data-bs-target="#iso-content"
-                        type="button" role="tab">
-                        Isolation Forest
-                    </button>
-                </li>
-            </ul>
-        </div>
+        <!-- All Anomalous Logs Section -->
+        <h4 class="fw-bold text-white mb-3"><i class="bi bi-list-columns-reverse me-2"></i>All Anomalous Logs Details
+        </h4>
 
-        <!-- Tab Content: Tables -->
-        <div class="tab-content" id="modelTabContent">
+        <!-- Existing Tabs to maintain backward compatibility -->
+        <ul class="nav nav-pills mb-3" id="logTab" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active" id="ae-log-tab" data-bs-toggle="pill" data-bs-target="#ae-log-content"
+                    type="button" role="tab">Autoencoder Logs</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="iso-log-tab" data-bs-toggle="pill" data-bs-target="#iso-log-content"
+                    type="button" role="tab">Isolation Forest Logs</button>
+            </li>
+        </ul>
 
-            <!-- Autoencoder Table -->
-            <div class="tab-pane fade show active" id="ae-content" role="tabpanel">
+        <div class="tab-content" id="logTabContent">
+            <!-- AE Logs Table -->
+            <div class="tab-pane fade show active" id="ae-log-content" role="tabpanel">
                 <div class="cyber-table table-responsive">
-                    <table class="table table-dark table-hover align-middle mb-0">
+                    <table class="table table-dark table-hover align-middle mb-0" id="aeLogTable">
                         <thead class="bg-dark border-bottom border-secondary text-secondary text-uppercase small">
                             <tr>
                                 <th scope="col" class="ps-4">ID</th>
+                                <th scope="col">Cluster ID</th>
                                 <th scope="col">Severity</th>
                                 <th scope="col">Attack Type</th>
                                 <th scope="col">Rec. Error</th>
-                                <th scope="col" style="width: 25%;">AI Explanation</th>
-                                <th scope="col" style="width: 25%;">LLM Prediction</th>
+                                <th scope="col" style="width: 35%;">SHAP Explanation</th>
                                 <th scope="col" class="text-end pe-4">Actions</th>
                             </tr>
                         </thead>
                         <tbody>
                             {% for item in results.autoencoder.anomalies %}
-                            <tr>
+                            <tr class="log-row ae-log-row" data-cluster-id="{{ item.cluster_id }}">
                                 <td class="ps-4 mono-font text-primary">#{{ item.index }}</td>
+                                <td class="mono-font text-muted">{{ item.cluster_id }}</td>
                                 <td>
-                                    {% if item.severity == 'Critical' %}
-                                    <span class="badge bg-danger"><i
-                                            class="bi bi-exclamation-octagon me-1"></i>Critical</span>
-                                    {% elif item.severity == 'High' %}
-                                    <span class="badge bg-warning text-dark"><i
-                                            class="bi bi-exclamation-triangle me-1"></i>High</span>
-                                    {% elif item.severity == 'Medium' %}
-                                    <span class="badge bg-info text-dark">Medium</span>
-                                    {% else %}
-                                    <span class="badge bg-secondary">Low</span>
-                                    {% endif %}
+                                    {% if item.severity == 'Critical' %}<span class="badge bg-danger">Critical</span>
+                                    {% elif item.severity == 'High' %}<span
+                                        class="badge bg-warning text-dark">High</span>
+                                    {% elif item.severity == 'Medium' %}<span
+                                        class="badge bg-info text-dark">Medium</span>
+                                    {% else %}<span class="badge bg-secondary">Low</span>{% endif %}
                                 </td>
-                                <td>
-                                    <span class="fw-bold text-white">{{ item.attack_type if item.attack_type else
-                                        'Unknown' }}</span>
-                                </td>
+                                <td><span class="fw-bold text-white">{{ item.attack_type }}</span></td>
                                 <td class="mono-font">{{ "%.4f"|format(item.error) }}</td>
-                                <td>
-                                    <small class="d-block text-muted text-truncate" style="max-width: 250px;"
-                                        title="{{ item.explanation }}">{{ item.explanation }}</small>
-                                </td>
-                                <td>
-                                    <small class="d-block text-primary text-truncate" style="max-width: 250px;"
-                                        title="{{ item.llm_prediction }}">{{ item.llm_prediction }}</small>
-                                </td>
+                                <td><small class="text-muted text-break">{{ item.explanation }}</small></td>
                                 <td class="text-end pe-4">
                                     <button class="btn btn-sm btn-outline-secondary btn-view-log"
                                         data-log='{{ item | tojson | safe }}'>
-                                        <i class="bi bi-eye"></i> View Log
+                                        <i class="bi bi-eye"></i> View
                                     </button>
                                 </td>
                             </tr>
                             {% else %}
                             <tr>
-                                <td colspan="7" class="text-center py-5 text-muted">
-                                    <i class="bi bi-shield-check fs-1 d-block mb-3"></i>
-                                    No anomalies detected by Autoencoder.
-                                </td>
+                                <td colspan="7" class="text-center py-5 text-muted">No anomalies detected.</td>
                             </tr>
                             {% endfor %}
                         </tbody>
@@ -309,124 +363,89 @@
                 </div>
             </div>
 
-            <!-- Isolation Forest Table -->
-            <div class="tab-pane fade" id="iso-content" role="tabpanel">
+            <!-- Iso Logs Table -->
+            <div class="tab-pane fade" id="iso-log-content" role="tabpanel">
                 <div class="cyber-table table-responsive">
-                    <table class="table table-dark table-hover align-middle mb-0">
+                    <table class="table table-dark table-hover align-middle mb-0" id="isoLogTable">
                         <thead class="bg-dark border-bottom border-secondary text-secondary text-uppercase small">
                             <tr>
                                 <th scope="col" class="ps-4">ID</th>
+                                <th scope="col">Cluster ID</th>
                                 <th scope="col">Severity</th>
                                 <th scope="col">Attack Type</th>
-                                <th scope="col">Score</th>
-                                <th scope="col" style="width: 25%;">AI Explanation</th>
-                                <th scope="col" style="width: 25%;">LLM Prediction</th>
+                                <th scope="col" style="width: 35%;">SHAP Explanation</th>
                                 <th scope="col" class="text-end pe-4">Actions</th>
                             </tr>
                         </thead>
                         <tbody>
                             {% for item in results.isolation_forest.anomalies %}
-                            <tr>
+                            <tr class="log-row iso-log-row" data-cluster-id="{{ item.cluster_id }}">
                                 <td class="ps-4 mono-font text-danger">#{{ item.index }}</td>
+                                <td class="mono-font text-muted">{{ item.cluster_id }}</td>
                                 <td>
-                                    {% if item.severity == 'Critical' %}
-                                    <span class="badge bg-danger"><i
-                                            class="bi bi-exclamation-octagon me-1"></i>Critical</span>
-                                    {% elif item.severity == 'High' %}
-                                    <span class="badge bg-warning text-dark"><i
-                                            class="bi bi-exclamation-triangle me-1"></i>High</span>
-                                    {% elif item.severity == 'Medium' %}
-                                    <span class="badge bg-info text-dark">Medium</span>
-                                    {% else %}
-                                    <span class="badge bg-secondary">Low</span>
-                                    {% endif %}
+                                    {% if item.severity == 'Critical' %}<span class="badge bg-danger">Critical</span>
+                                    {% elif item.severity == 'High' %}<span
+                                        class="badge bg-warning text-dark">High</span>
+                                    {% elif item.severity == 'Medium' %}<span
+                                        class="badge bg-info text-dark">Medium</span>
+                                    {% else %}<span class="badge bg-secondary">Low</span>{% endif %}
                                 </td>
-                                <td>
-                                    <span class="fw-bold text-white">{{ item.attack_type if item.attack_type else
-                                        'Unknown' }}</span>
-                                </td>
-                                <td class="mono-font">-1.00</td>
-                                <td>
-                                    <small class="d-block text-muted text-truncate" style="max-width: 250px;"
-                                        title="{{ item.explanation }}">{{ item.explanation }}</small>
-                                </td>
-                                <td>
-                                    <small class="d-block text-primary text-truncate" style="max-width: 250px;"
-                                        title="{{ item.llm_prediction }}">{{ item.llm_prediction }}</small>
-                                </td>
+                                <td><span class="fw-bold text-white">{{ item.attack_type }}</span></td>
+                                <td><small class="text-muted text-break">{{ item.explanation }}</small></td>
                                 <td class="text-end pe-4">
                                     <button class="btn btn-sm btn-outline-secondary btn-view-log"
                                         data-log='{{ item | tojson | safe }}'>
-                                        <i class="bi bi-eye"></i> View Log
+                                        <i class="bi bi-eye"></i> View
                                     </button>
                                 </td>
                             </tr>
                             {% else %}
                             <tr>
-                                <td colspan="7" class="text-center py-5 text-muted">
-                                    <i class="bi bi-shield-check fs-1 d-block mb-3"></i>
-                                    No anomalies detected by Isolation Forest.
-                                </td>
+                                <td colspan="6" class="text-center py-5 text-muted">No anomalies detected.</td>
                             </tr>
                             {% endfor %}
                         </tbody>
                     </table>
                 </div>
             </div>
-
         </div>
     </div>
 
-    <!-- Log Viewer Modal -->
+    <!-- Modals (Re-used) -->
     <div class="modal fade" id="logModal" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog modal-lg modal-dialog-centered">
+            <!-- Modal Content Same As Before -->
             <div class="modal-content">
                 <div class="modal-header border-bottom border-secondary">
                     <h5 class="modal-title fw-bold" id="logModalTitle">Log Details</h5>
-                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"
-                        aria-label="Close"></button>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body">
-
                     <div class="row g-3 mb-4">
-                        <div class="col-md-4">
-                            <label class="small text-secondary text-uppercase fw-bold">Anomaly ID</label>
-                            <div class="text-white fw-bold mono-font" id="modalId">#</div>
+                        <div class="col-md-4"><label class="small text-secondary fw-bold">Anomaly ID</label>
+                            <div class="text-white fw-bold mono-font" id="modalId"></div>
                         </div>
-                        <div class="col-md-4">
-                            <label class="small text-secondary text-uppercase fw-bold">Attack Type</label>
-                            <div class="text-white" id="modalType">-</div>
+                        <div class="col-md-4"><label class="small text-secondary fw-bold">Attack Type</label>
+                            <div class="text-white fw-bold" id="modalType"></div>
                         </div>
-                        <div class="col-md-4">
-                            <label class="small text-secondary text-uppercase fw-bold">Severity</label>
-                            <div id="modalSeverity">-</div>
+                        <div class="col-md-4"><label class="small text-secondary fw-bold">Severity</label>
+                            <div id="modalSeverity"></div>
                         </div>
                     </div>
-
                     <div class="alert alert-dark border border-secondary mb-4">
-                        <h6 class="fw-bold text-primary mb-2"><i class="bi bi-robot me-2"></i>AI Analysis</h6>
-                        <p class="mb-0 small text-muted" id="modalExplanation">...</p>
-                        <hr class="border-secondary my-2">
-                        <p class="mb-0 small text-muted fw-bold" id="modalPrediction">...</p>
+                        <h6 class="fw-bold text-primary mb-2"><i class="bi bi-diagram-3 me-2"></i>Cluster & SHAP
+                            Reasoning</h6>
+                        <p class="mb-0 small text-muted" id="modalExplanation"></p>
                     </div>
-
-                    <h6 class="text-secondary text-uppercase fw-bold small mb-2">Raw Log Data</h6>
-                    <div class="bg-black p-3 rounded border border-secondary">
+                    <h6 class="text-secondary fw-bold small mb-2">Raw Log Data</h6>
+                    <div class="bg-black p-3 rounded border border-secondary my-2">
                         <pre class="mb-0 text-success mono-font small" id="modalRawLog"
                             style="white-space: pre-wrap;"></pre>
                     </div>
-
                     <div class="mt-4">
-                        <h6 class="text-secondary text-uppercase fw-bold small mb-2">Feature Contribution Graph</h6>
-                        <div style="height: 200px; width: 100%;">
-                            <canvas id="modalChart"></canvas>
-                        </div>
+                        <h6 class="text-secondary fw-bold small mb-2">Feature Contribution Graph</h6>
+                        <div style="height: 200px;"><canvas id="modalChart"></canvas></div>
                     </div>
-
-                </div>
-                <div class="modal-footer border-top border-secondary">
-                    <button type="button" class="btn btn-outline-light btn-sm" data-bs-dismiss="modal">Close</button>
-                    <!-- Potential Action Button could go here e.g., "Flag as Safe" -->
                 </div>
             </div>
         </div>
@@ -435,85 +454,140 @@
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
         let myChart = null;
+        let pcaChartAe = null;
+        let pcaChartIso = null;
 
-        // Use event delegation or modern JS to handle clicks safely
         document.addEventListener('DOMContentLoaded', function () {
-            const buttons = document.querySelectorAll('.btn-view-log');
-            buttons.forEach(btn => {
+            // View log click binding
+            document.querySelectorAll('.btn-view-log').forEach(btn => {
                 btn.addEventListener('click', function () {
-                    const data = JSON.parse(this.getAttribute('data-log'));
-                    viewLog(data);
+                    viewLog(JSON.parse(this.getAttribute('data-log')));
                 });
             });
 
-            // Re-bind on tab switches if needed (Bootstrap handles show/hide, DOM stays)
+            // PCA Visualization initialization
+            const aePcaData = {{ results.autoencoder.pca_data | tojson | safe
+        }};
+        const isoPcaData = {{ results.isolation_forest.pca_data | tojson | safe }};
+
+        if (aePcaData && aePcaData.length > 0) initPcaChart('pcaChartAe', aePcaData);
+        if (isoPcaData && isoPcaData.length > 0) initPcaChart('pcaChartIso', isoPcaData);
         });
 
+        // Highlight table based on cluster and scroll to it
+        function showClusterLogs(clusterId, model) {
+            // Switch to appropriate log tab
+            let targetTab = new bootstrap.Tab(document.querySelector(`#${model}-log-tab`));
+            targetTab.show();
+
+            // Filter the table specifically for this cluster
+            const rows = document.querySelectorAll(`.${model}-log-row`);
+            rows.forEach(r => {
+                if (r.getAttribute('data-cluster-id') === clusterId) {
+                    r.style.display = 'table-row';
+                    r.style.backgroundColor = 'rgba(88, 166, 255, 0.1)';
+                    setTimeout(() => r.style.backgroundColor = '', 2000); // fade out highlight
+                } else {
+                    r.style.display = 'none'; // hide others temporarily!
+                }
+            });
+
+            // Add a reset filter button or rely on user knowing
+            // To be simple, scroll to the table
+            document.getElementById(`${model}LogTable`).scrollIntoView({ behavior: 'smooth' });
+        }
+
+        // Reset filter
+        document.querySelectorAll('.nav-link').forEach(l => {
+            l.addEventListener('click', () => {
+                document.querySelectorAll('.log-row').forEach(r => r.style.display = 'table-row');
+            });
+        });
+
+        function initPcaChart(canvasId, pcaData) {
+            const ctx = document.getElementById(canvasId).getContext('2d');
+
+            // Group points by cluster
+            const groups = {};
+            pcaData.forEach(pt => {
+                let colorKey = pt.cluster_id !== "None" ? pt.attack_type : 'Noise/Unclustered';
+                if (!groups[colorKey]) groups[colorKey] = [];
+                groups[colorKey].push({ x: pt.x, y: pt.y, raw: pt });
+            });
+
+            const datasets = Object.keys(groups).map((key, index) => {
+                // Generate distinct color per cluster
+                const hue = index * (360 / Math.max(Object.keys(groups).length, 1));
+                const color = key.includes('Noise') ? '#555555' : `hsl(${hue}, 70%, 50%)`;
+                return {
+                    label: key,
+                    data: groups[key].map(d => ({ x: d.x, y: d.y, r: 5, raw: d.raw })),
+                    backgroundColor: color,
+                    borderColor: '#fff',
+                    borderWidth: 1
+                };
+            });
+
+            new Chart(ctx, {
+                type: 'bubble',
+                data: { datasets: datasets },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    plugins: {
+                        legend: { position: 'bottom', labels: { color: '#8b949e', font: { size: 10 } } },
+                        tooltip: {
+                            callbacks: {
+                                label: function (context) {
+                                    const raw = context.raw.raw;
+                                    return `Log #${raw.index} | ${raw.attack_type} (${raw.cluster_id})`;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: { display: false },
+                        y: { display: false }
+                    }
+                }
+            });
+        }
+
         function viewLog(item) {
-            // Populate basic fields
             document.getElementById('modalId').innerText = '#' + item.index;
             document.getElementById('modalType').innerText = item.attack_type || 'Unknown';
             document.getElementById('modalExplanation').innerText = item.explanation;
-            document.getElementById('modalPrediction').innerText = item.llm_prediction || '';
 
-            // Severity Label
-            const sevEl = document.getElementById('modalSeverity');
-            let sevBadge = '';
-            if (item.severity === 'Critical') sevBadge = '<span class="badge bg-danger">Critical</span>';
-            else if (item.severity === 'High') sevBadge = '<span class="badge bg-warning text-dark">High</span>';
-            else if (item.severity === 'Medium') sevBadge = '<span class="badge bg-info text-dark">Medium</span>';
-            else sevBadge = '<span class="badge bg-secondary">Low</span>';
-            sevEl.innerHTML = sevBadge;
+            let badge = '<span class="badge bg-secondary">Low</span>';
+            if (item.severity === 'Critical') badge = '<span class="badge bg-danger">Critical</span>';
+            else if (item.severity === 'High') badge = '<span class="badge bg-warning text-dark">High</span>';
+            else if (item.severity === 'Medium') badge = '<span class="badge bg-info text-dark">Medium</span>';
+            document.getElementById('modalSeverity').innerHTML = badge;
 
-            // Formatted Log
             document.getElementById('modalRawLog').innerText = JSON.stringify(item.log, null, 2);
 
-            // Chart
-            renderChartInModal(item.graph_data);
-
-            // Show Modal
-            const modal = new bootstrap.Modal(document.getElementById('logModal'));
-            modal.show();
-        }
-
-        function renderChartInModal(data) {
-            const ctx = document.getElementById('modalChart').getContext('2d');
-
-            if (myChart) {
-                myChart.destroy();
-            }
-
-            myChart = new Chart(ctx, {
+            if (myChart) myChart.destroy();
+            myChart = new Chart(document.getElementById('modalChart').getContext('2d'), {
                 type: 'bar',
                 data: {
-                    labels: data.labels,
+                    labels: item.graph_data.labels,
                     datasets: [{
-                        label: 'Feature Contribution',
-                        data: data.values,
-                        backgroundColor: data.values.map(v => v < 0 ? 'rgba(218, 54, 51, 0.7)' : 'rgba(88, 166, 255, 0.7)'),
-                        borderColor: data.values.map(v => v < 0 ? '#da3633' : '#58a6ff'),
+                        data: item.graph_data.values,
+                        backgroundColor: item.graph_data.values.map(v => v < 0 ? 'rgba(218,54,51,0.7)' : 'rgba(88,166,255,0.7)'),
+                        borderColor: item.graph_data.values.map(v => v < 0 ? '#da3633' : '#58a6ff'),
                         borderWidth: 1
                     }]
                 },
                 options: {
-                    indexAxis: 'y',
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {
-                        legend: { display: false }
-                    },
+                    indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
                     scales: {
-                        x: {
-                            ticks: { color: '#8b949e' },
-                            grid: { color: '#30363d' }
-                        },
-                        y: {
-                            ticks: { color: '#8b949e' },
-                            grid: { display: false }
-                        }
+                        x: { ticks: { color: '#8b949e' }, grid: { color: '#30363d' } },
+                        y: { ticks: { color: '#8b949e' }, grid: { display: false } }
                     }
                 }
             });
+
+            new bootstrap.Modal(document.getElementById('logModal')).show();
         }
     </script>
 </body>

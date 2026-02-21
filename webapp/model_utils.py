@@ -8,11 +8,17 @@ from tensorflow.keras.models import load_model
 from tensorflow.keras.losses import mse
 import shap
 import openai
+import json
+from clustering_engine import cluster_anomalies
+from cluster_summarizer import summarize_cluster
+from llm_classifier import classify_cluster
+from sklearn.decomposition import PCA
 
 # Constants
 MODELS_DIR = os.path.join(os.path.dirname(__file__), 'models')
 LOG_FILE_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'synthetic_logs_10k.csv')
-import json
+LLM_ENABLED = True
+CLUSTER_MIN_SIZE = 5
 
 # Regex Pattern (Same as train_models.py)
 LOG_PATTERN = re.compile(r'<150>(\w{3}\s+\d+\s+\d{2}:\d{2}:\d{2})\s+(\S+)\s+(\S+):\s+(\S+)\s+(\S+)\s+(\d+)\s+(\S+)\s+-\s+-\s+\[(.*?)\]\s+"(.*?)"\s+(\d+)\s+(\S+)\s+(\d+)\s+"(.*?)"\s+"(.*?)"')
@@ -26,64 +32,128 @@ except ImportError:
     OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
 def parse_logs(file_path):
-    # 1. Try reading as a standard CSV (Header-based)
+    # Determine if it's likely a raw syslog file based on the first line
+    is_raw_log = False
     try:
-        df = pd.read_csv(file_path)
-        # Normalize columns: lowercase, strip spaces, replace special chars
-        df.columns = [str(c).strip().lower().replace(' ', '_').replace('-', '_') for c in df.columns]
-        
-        # Comprehensive mapping for standard columns
-        column_mapping = {
-            # Status
-            'code': 'status', 'status_code': 'status', 'sc_status': 'status', 's_status': 'status', 'return_code': 'status', 'response_code': 'status',
-            # Bytes
-            'size': 'bytes', 'content_length': 'bytes', 'length': 'bytes', 'sc_bytes': 'bytes', 'cs_bytes': 'bytes', 'bytes_sent': 'bytes', 'response_size': 'bytes',
-            # Time
-            'time': 'response_time', 'duration': 'response_time', 'time_taken': 'response_time', 'elapsed': 'response_time', 'latency': 'response_time',
-            # Request/URL
-            'url': 'request', 'uri': 'request', 'path': 'request', 'message': 'request', 'cs_uri_stem': 'request', 'cs_uri': 'request',
-            # Method (Optional, if request is missing)
-            'method': 'method', 'cs_method': 'method', 'request_method': 'method'
-        }
-        
-        # Apply renaming
-        df = df.rename(columns=column_mapping)
-        
-        # Handle 'method' column if 'request' is missing
-        if 'request' not in df.columns and 'method' in df.columns:
-            # Create a dummy request string from method so downstream logic works
-            df['request'] = df['method'] + ' /UNKNOWN_PATH HTTP/1.1'
-            
-        # Ensure required columns exist, fill with defaults if missing
-        if 'status' not in df.columns:
-            df['status'] = 200 # Default to success
-        if 'bytes' not in df.columns:
-            df['bytes'] = 0
-        if 'response_time' not in df.columns:
-            df['response_time'] = 0
-            
-        # Check if we have the critical 'request' column now
-        if 'request' in df.columns:
-            # Basic cleaning
-            df['status'] = pd.to_numeric(df['status'], errors='coerce').fillna(0).astype(int)
-            df['bytes'] = pd.to_numeric(df['bytes'], errors='coerce').fillna(0).astype(int)
-            df['response_time'] = pd.to_numeric(df['response_time'], errors='coerce').fillna(0).astype(int)
-            df['request'] = df['request'].astype(str)
-            
-            print("Successfully parsed as CSV with mapped columns.")
-            return df
-            
-    except Exception as e:
-        print(f"CSV parsing failed, falling back to regex: {e}")
+        with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+            first_line = f.readline().strip()
+            # If exported from Excel wrongly, it might be surrounded by quotes entirely:
+            clean_first = first_line[1:-1].replace('""', '"') if first_line.startswith('"') and first_line.endswith('"') else first_line
+            # Common raw log indicators: starts with syslog facility <150>, or date like Jan 28, or IP address
+            if clean_first.startswith('<') or re.match(r'^[A-Z][a-z]{2}\s+\d+', clean_first) or re.match(r'^\d{1,3}\.\d{1,3}\.', clean_first):
+                is_raw_log = True
+    except Exception:
+        pass
 
-    # 2. Fallback: Parse using Syslog Regex (for raw log files)
+    # 1. Try reading as tabular data (CSV/TSV)
+    if not is_raw_log:
+        try:
+            with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                first_line = f.readline()
+                
+            delimiter = ','
+            if ';' in first_line and first_line.count(';') > first_line.count(','):
+                delimiter = ';'
+            elif '\t' in first_line and first_line.count('\t') > first_line.count(','):
+                delimiter = '\t'
+
+            df = pd.read_csv(file_path, sep=delimiter, on_bad_lines='skip')
+            
+            # We only consider it a valid tabular dataset if it parses into multiple sensible columns
+            if len(df.columns) > 1 and not first_line.strip().startswith('<'):
+                df.columns = [str(c).strip().lower().replace(' ', '_').replace('-', '_') for c in df.columns]
+                
+                # --- Dynamic Column Mapping ---
+                if 'status' not in df.columns:
+                    for col in df.columns:
+                        if 'status' in col or 'code' in col:
+                            df['status'] = df[col]
+                            break
+                    if 'status' not in df.columns: df['status'] = 200
+                    
+                if 'bytes' not in df.columns:
+                    for col in df.columns:
+                        if 'byte' in col or 'size' in col or 'length' in col:
+                            df['bytes'] = df[col]
+                            break
+                    if 'bytes' not in df.columns: df['bytes'] = 0
+                    
+                if 'response_time' not in df.columns:
+                    for col in df.columns:
+                        if 'time' in col or 'duration' in col or 'latency' in col or 'elapsed' in col:
+                            df['response_time'] = df[col]
+                            break
+                    if 'response_time' not in df.columns: df['response_time'] = 0
+                    
+                if 'request' not in df.columns:
+                    method_col = None
+                    path_col = None
+                    for col in df.columns:
+                        if col in ['method', 'cs_method', 'request_method', 'action']:
+                            method_col = col
+                        if col in ['url', 'uri', 'path', 'endpoint', 'cs_uri_stem', 'cs_uri']:
+                            path_col = col
+                    
+                    if method_col and path_col:
+                        df['request'] = df[method_col].astype(str) + " " + df[path_col].astype(str) + " HTTP/1.1"
+                    elif method_col:
+                        df['request'] = df[method_col].astype(str) + " /UNKNOWN HTTP/1.1"
+                    elif path_col:
+                        df['request'] = "GET " + df[path_col].astype(str) + " HTTP/1.1"
+                    else:
+                        df['request'] = "UNKNOWN /UNKNOWN HTTP/1.1"
+
+                # Fill NA and clean types safely
+                df['status'] = pd.to_numeric(df['status'], errors='coerce').fillna(200).astype(int)
+                df['bytes'] = pd.to_numeric(df['bytes'].astype(str).str.replace('-', '0'), errors='coerce').fillna(0).astype(int)
+                df['response_time'] = pd.to_numeric(df['response_time'].astype(str).str.replace('-', '0'), errors='coerce').fillna(0).astype(int)
+                df['request'] = df['request'].astype(str).fillna("UNKNOWN / UNKNOWN HTTP/1.1")
+                
+                print("Successfully parsed as tabular data with dynamic column mappings.")
+                if len(df) > 0:
+                    return df
+                
+        except Exception as e:
+            print(f"Tabular parsing failed, falling back to regex: {e}")
+
+    # 2. Fallback: Parse using Syslog Regex (for unstructured raw log files)
     data = []
+    
+    # A highly flexible fallback regex mapping an arbitrary unformatted syslog header into key fields.
+    # Group extraction targets: 1:syslog_ts, 2:host, 3:process, 4:ip_block, 5:apache_ts, 6:request, 7:status, 8:bytes, 9:response_time, 10:referer, 11:user_agent
+    DYNAMIC_LOG_PATTERN = re.compile(
+        r'^<150>([A-Za-z]{3}\s+\d+\s+\d{2}:\d{2}:\d{2})\s+(\S+)\s+(.*?):\s+(.*?)\s+-\s+-\s+\[(.*?)\]\s+"(.*?)"\s+(\d+)\s+(\S+)\s+(\S+)\s+\d*\s*"(.*?)"\s+"(.*?)"'
+    )
+    
     try:
         with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
             for line in f:
-                match = LOG_PATTERN.match(line.strip())
+                line_str = line.strip()
+                # Dynamically unfold strings improperly re-escaped into Excel CSV single columns
+                if line_str.startswith('"') and line_str.endswith('"'):
+                    line_str = line_str[1:-1].replace('""', '"')
+                    
+                # 1. Try rigid legacy pattern (which maps out specific properties in order)
+                match = LOG_PATTERN.match(line_str)
                 if match:
                     data.append(match.groups())
+                else:
+                    # 2. Try the flexible dynamic fallback pattern (which coalesces variadic IP lists and unpredictable variables together safely)
+                    match2 = DYNAMIC_LOG_PATTERN.match(line_str)
+                    if match2:
+                        g = match2.groups()
+                        # Extract the dynamic match list: (syslog_ts, host, process, ip_block, apache_ts, request, status, bytes, response_time, referer, user_agent)
+                        
+                        ip_block = g[3] 
+                        # just split the first two IPs gracefully
+                        ips = re.findall(r'\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}', ip_block)
+                        ip1 = ips[0] if len(ips) > 0 else "0.0.0.0"
+                        ip2 = ips[1] if len(ips) > 1 else ip1
+                        
+                        row = (
+                            g[0], g[1], g[2], ip1, ip2, "0", "UNKNOWN", g[4], g[5], g[6], g[7], g[8], g[9], g[10]
+                        )
+                        data.append(row)
         
         if data:
             columns = [
@@ -91,12 +161,19 @@ def parse_logs(file_path):
                 "apache_ts", "request", "status", "bytes", "response_time", "referer", "user_agent"
             ]
             df = pd.DataFrame(data, columns=columns)
+            
+            # The model requires status, response_time, and bytes as integers during inference
+            df['status'] = pd.to_numeric(df['status'], errors='coerce').fillna(200).astype(int)
+            df['bytes'] = pd.to_numeric(df['bytes'].replace('-', '0'), errors='coerce').fillna(0).astype(int)
+            df['response_time'] = pd.to_numeric(df['response_time'].replace('-', '0'), errors='coerce').fillna(0).astype(int)
+            df['request'] = df['request'].astype(str)
+            
             return df
     except Exception as e:
         print(f"Regex parsing failed: {e}")
     
     # 3. Last Resort: Return empty
-    return pd.DataFrame()
+    return pd.DataFrame({"error": [f"Could not parse file: {file_path}"]})
 
 class ModelHandler:
     def __init__(self):
@@ -214,6 +291,9 @@ class ModelHandler:
         if df.empty:
             return {"error": "No data found or parsing failed."}
             
+        if "error" in df.columns:
+            return {"error": str(df["error"].iloc[0])}
+            
         total_logs = len(df)
         
         # Autoencoder Analysis
@@ -229,6 +309,15 @@ class ModelHandler:
         iso_preds = self.iso_forest.predict(X_iso)
         iso_scores_all = self.iso_forest.decision_function(X_iso)
         iso_anomalies_mask = iso_preds == -1
+        
+        # Fallback: if the trained model detects strictly 0 anomalies (perhaps due to 
+        # training contamination mismatch), flag the lowest 5% anomaly scores dynamically.
+        if not iso_anomalies_mask.any() and len(df) > 0:
+            dynamic_thresh = np.percentile(iso_scores_all, 5)
+            # Only apply if it actually isolates a small distinct minority (not the whole set)
+            if dynamic_thresh < np.median(iso_scores_all):
+                iso_anomalies_mask = iso_scores_all <= dynamic_thresh
+
         iso_anomalies = df[iso_anomalies_mask].copy()
         iso_anomalies['score'] = iso_scores_all[iso_anomalies_mask]
         
@@ -236,12 +325,16 @@ class ModelHandler:
             "autoencoder": {
                 "count": int(np.sum(ae_anomalies_mask)),
                 "anomalies": [],
-                "all_anomalies": []
+                "all_anomalies": [],
+                "clusters": [],
+                "pca_data": []
             },
             "isolation_forest": {
                 "count": int(np.sum(iso_anomalies_mask)),
                 "anomalies": [],
-                "all_anomalies": []
+                "all_anomalies": [],
+                "clusters": [],
+                "pca_data": []
             },
             "total_logs": total_logs
         }
@@ -295,82 +388,214 @@ class ModelHandler:
                     "is_critical": score_val <= iso_crit_thresh
                 })
         
-        # --- Generate Deep AI Explanations for ALL Anomalies ---
-        # Note: This loops through ALL detected anomalies to get AI analysis.
-        
-        # AE Explanations
+        # --- Generate Cluster-Level AI Explanations ---
+
+        # 1. AE Clusters
         if not ae_anomalies.empty:
+            shap_dict_ae = {}
             for idx in ae_anomalies.index:
-                row = df.loc[idx]
-                instance = X_ae.iloc[[idx]] 
-                feature_names = X_ae.columns.tolist()
-                
-                shap_val = np.zeros(len(feature_names)) # Default fallback
-                
+                instance = X_ae.iloc[[df.index.get_loc(idx)]]
                 if self.ae_explainer:
                     try:
                         shap_vals = self.ae_explainer.shap_values(instance)
-                        shap_val = shap_vals[0] if isinstance(shap_vals, list) else shap_vals
-                        shap_val = shap_val.flatten()
-                    except Exception as e:
-                        print(f"SHAP calculation failed for AE anomaly {idx}: {e}")
-                        # Fallback: use raw reconstruction error as proxy for importance if SHAP fails
-                        # row_diff computed earlier is a good fallback
-                        row_iloc = df.index.get_loc(idx)
-                        shap_val = ae_diff[row_iloc] 
+                        shap_dict_ae[idx] = shap_vals[0].flatten() if isinstance(shap_vals, list) else shap_vals.flatten()
+                    except Exception:
+                        shap_dict_ae[idx] = ae_diff[df.index.get_loc(idx)]
+                else:
+                    shap_dict_ae[idx] = ae_diff[df.index.get_loc(idx)]
+            
+            features_df_ae = X_ae.loc[ae_anomalies.index]
+            cluster_data_ae = cluster_anomalies(features_df_ae, ae_anomalies)
+            cluster_summaries_ae = summarize_cluster(cluster_data_ae, df, shap_dict_ae, X_ae.columns.tolist())
+            
+            # Compute PCA for visualization
+            if len(features_df_ae) >= 2:
+                pca = PCA(n_components=2)
+                pca_result = pca.fit_transform(features_df_ae.values)
+                # Map back to array with cluster_id later
+                pca_dict = {idx: pca_result[i] for i, idx in enumerate(ae_anomalies.index)}
+            else:
+                pca_dict = {idx: [0.0, 0.0] for idx in ae_anomalies.index}
+            
+            processed_indices_ae = set()
+            for c_id, summary in cluster_summaries_ae.items():
+                if LLM_ENABLED and summary['size'] >= CLUSTER_MIN_SIZE:
+                    ai_result = classify_cluster(summary)
+                else:
+                    ai_result = {"attack_type": "Unclassified Cluster", "severity": "Medium", "reasoning": "Cluster too small or AI disabled.", "common_pattern": "Pattern needs manual review"}
                 
-                ai_analysis = self.get_ai_analysis_ae(row.to_dict(), shap_val, feature_names)
-                graph_data = self.get_top_features(shap_val, feature_names)
-
-                # Update "all_anomalies" list (used for report)
-                for item in results["autoencoder"]["all_anomalies"]:
+                results["autoencoder"]["clusters"].append({
+                    "cluster_id": c_id,
+                    "attack_type": ai_result.get("attack_type", "Unknown"),
+                    "severity": ai_result.get("severity", "Medium"),
+                    "confidence": ai_result.get("confidence", "0.0"),
+                    "reasoning": ai_result.get("reasoning", ""),
+                    "common_pattern": ai_result.get("common_pattern", ""),
+                    "size": summary["size"],
+                    "log_indices": summary["log_indices"]
+                })
+                
+                for idx in summary["log_indices"]:
+                    processed_indices_ae.add(idx)
+                    pattern = ai_result.get("attack_type", "Unknown")
+                    top_3 = ", ".join(summary["top_3_shap_features"])
+                    per_log_exp = f"This log is part of an anomaly cluster '{pattern}'. Contributing features: {top_3}."
+                    
+                    row = df.loc[idx]
+                    graph_data = self.get_top_features(shap_dict_ae[idx], X_ae.columns.tolist())
+                    
+                    for item in results["autoencoder"]["all_anomalies"]:
+                        if item["index"] == idx:
+                            item["explanation"] = per_log_exp
+                            item["attack_type"] = pattern
+                            item["severity"] = ai_result.get("severity", "Medium")
+                            item["llm_prediction"] = ai_result.get("reasoning", "")
+                            break
+                            
+                    results["autoencoder"]["anomalies"].append({
+                        "index": int(idx),
+                        "log": row.to_dict(),
+                        "error": float(ae_anomalies.loc[idx, 'error']),
+                        "explanation": per_log_exp,
+                        "attack_type": pattern,
+                        "severity": ai_result.get("severity", "Medium"),
+                        "llm_prediction": ai_result.get("reasoning", ""),
+                        "cluster_id": c_id,
+                        "graph_data": graph_data
+                    })
+                    
+            # Handle noise
+            for idx in ae_anomalies.index:
+                if idx not in processed_indices_ae:
+                    row = df.loc[idx]
+                    graph_data = self.get_top_features(shap_dict_ae[idx], X_ae.columns.tolist())
+                    results["autoencoder"]["anomalies"].append({
+                        "index": int(idx),
+                        "log": row.to_dict(),
+                        "error": float(ae_anomalies.loc[idx, 'error']),
+                        "explanation": "Isolated anomaly (noise). Did not cluster with others.",
+                        "attack_type": "Isolated Anomaly",
+                        "severity": "Low",
+                        "llm_prediction": "N/A",
+                        "cluster_id": "None",
+                        "graph_data": graph_data
+                    })
+                    
+            # Populate pca_data for frontend
+            for idx in ae_anomalies.index:
+                cluster_id = "None"
+                attack_type = "Isolated Anomaly"
+                for item in results["autoencoder"]["anomalies"]:
                     if item["index"] == idx:
-                        item["explanation"] = ai_analysis["explanation"]
-                        item["attack_type"] = ai_analysis["attack_type"]
-                        item["severity"] = ai_analysis["severity"]
-                        item["llm_prediction"] = ai_analysis["llm_prediction"]
+                        cluster_id = item.get("cluster_id", "None")
+                        attack_type = item.get("attack_type", "Isolated Anomaly")
                         break
-
-                # Add to detailed anomalies list (for UI display)
-                results["autoencoder"]["anomalies"].append({
-                    "index": int(idx),
-                    "log": row.to_dict(),
-                    "error": float(ae_anomalies.loc[idx, 'error']),
-                    "explanation": ai_analysis["explanation"],
-                    "attack_type": ai_analysis["attack_type"],
-                    "severity": ai_analysis["severity"],
-                    "llm_prediction": ai_analysis["llm_prediction"],
-                    "graph_data": graph_data
+                results["autoencoder"]["pca_data"].append({
+                    "x": float(pca_dict[idx][0]),
+                    "y": float(pca_dict[idx][1]),
+                    "cluster_id": cluster_id,
+                    "attack_type": attack_type,
+                    "index": int(idx)
                 })
 
-        # Iso Forest Explanations
+        # 2. Iso Forest Clusters
         if not iso_anomalies.empty:
-            # We already calculated initial shap values above, but need to re-loop for AI calls and graph data
-            # Or reuse shap_values_iso_all from above
+            shap_dict_iso = {idx: shap_values_iso_all[i] for i, idx in enumerate(iso_anomalies.index)}
             
-            for i, idx in enumerate(iso_anomalies.index):
-                row = df.loc[idx]
-                shap_val = shap_values_iso_all[i]
-                feature_names = X_iso.columns.tolist()
-                ai_analysis = self.get_ai_analysis_iso(row.to_dict(), shap_val, feature_names)
-                graph_data = self.get_top_features(shap_val, feature_names)
+            features_df_iso = X_iso.loc[iso_anomalies.index]
+            cluster_data_iso = cluster_anomalies(features_df_iso, iso_anomalies)
+            cluster_summaries_iso = summarize_cluster(cluster_data_iso, df, shap_dict_iso, X_iso.columns.tolist())
+            
+            if len(features_df_iso) >= 2:
+                pca = PCA(n_components=2)
+                pca_result = pca.fit_transform(features_df_iso.values)
+                pca_dict_iso = {idx: pca_result[i] for i, idx in enumerate(iso_anomalies.index)}
+            else:
+                pca_dict_iso = {idx: [0.0, 0.0] for idx in iso_anomalies.index}
+            
+            processed_indices_iso = set()
+            for c_id, summary in cluster_summaries_iso.items():
+                if LLM_ENABLED and summary['size'] >= CLUSTER_MIN_SIZE:
+                    ai_result = classify_cluster(summary)
+                else:
+                    ai_result = {"attack_type": "Unclassified Cluster", "severity": "Medium", "reasoning": "Cluster too small or AI disabled.", "common_pattern": "Pattern needs manual review"}
                 
-                for item in results["isolation_forest"]["all_anomalies"]:
+                results["isolation_forest"]["clusters"].append({
+                    "cluster_id": c_id,
+                    "attack_type": ai_result.get("attack_type", "Unknown"),
+                    "severity": ai_result.get("severity", "Medium"),
+                    "confidence": ai_result.get("confidence", "0.0"),
+                    "reasoning": ai_result.get("reasoning", ""),
+                    "common_pattern": ai_result.get("common_pattern", ""),
+                    "size": summary["size"],
+                    "log_indices": summary["log_indices"]
+                })
+                
+                for idx in summary["log_indices"]:
+                    processed_indices_iso.add(idx)
+                    pattern = ai_result.get("attack_type", "Unknown")
+                    top_3 = ", ".join(summary["top_3_shap_features"])
+                    per_log_exp = f"This log is part of an anomaly cluster '{pattern}'. Contributing features: {top_3}."
+                    
+                    row = df.loc[idx]
+                    graph_data = self.get_top_features(shap_dict_iso[idx], X_iso.columns.tolist())
+                    
+                    for item in results["isolation_forest"]["all_anomalies"]:
+                        if item["index"] == idx:
+                            item["explanation"] = per_log_exp
+                            item["attack_type"] = pattern
+                            item["severity"] = ai_result.get("severity", "Medium")
+                            item["llm_prediction"] = ai_result.get("reasoning", "")
+                            break
+                            
+                    results["isolation_forest"]["anomalies"].append({
+                        "index": int(idx),
+                        "log": row.to_dict(),
+                        "explanation": per_log_exp,
+                        "attack_type": pattern,
+                        "severity": ai_result.get("severity", "Medium"),
+                        "llm_prediction": ai_result.get("reasoning", ""),
+                        "cluster_id": c_id,
+                        "graph_data": graph_data
+                    })
+                    
+            for idx in iso_anomalies.index:
+                if idx not in processed_indices_iso:
+                    row = df.loc[idx]
+                    graph_data = self.get_top_features(shap_dict_iso[idx], X_iso.columns.tolist())
+                    results["isolation_forest"]["anomalies"].append({
+                        "index": int(idx),
+                        "log": row.to_dict(),
+                        "explanation": "Isolated anomaly (noise). Did not cluster with others.",
+                        "attack_type": "Isolated Anomaly",
+                        "severity": "Low",
+                        "llm_prediction": "N/A",
+                        "cluster_id": "None",
+                        "graph_data": graph_data
+                    })
+                    for item in results["isolation_forest"]["all_anomalies"]:
+                        if item["index"] == idx:
+                            item["explanation"] = "Isolated anomaly (noise). Did not cluster with others."
+                            item["attack_type"] = "Isolated Anomaly"
+                            item["severity"] = "Low"
+                            item["llm_prediction"] = "N/A"
+                            break
+                            
+            # Populate pca_data for frontend
+            for idx in iso_anomalies.index:
+                cluster_id = "None"
+                attack_type = "Isolated Anomaly"
+                for item in results["isolation_forest"]["anomalies"]:
                     if item["index"] == idx:
-                        item["explanation"] = ai_analysis["explanation"]
-                        item["attack_type"] = ai_analysis["attack_type"]
-                        item["severity"] = ai_analysis["severity"]
-                        item["llm_prediction"] = ai_analysis["llm_prediction"]
+                        cluster_id = item.get("cluster_id", "None")
+                        attack_type = item.get("attack_type", "Isolated Anomaly")
                         break
-                
-                results["isolation_forest"]["anomalies"].append({
-                    "index": int(idx),
-                    "log": row.to_dict(),
-                    "explanation": ai_analysis["explanation"],
-                    "attack_type": ai_analysis["attack_type"],
-                    "severity": ai_analysis["severity"],
-                    "llm_prediction": ai_analysis["llm_prediction"],
-                    "graph_data": graph_data
+                results["isolation_forest"]["pca_data"].append({
+                    "x": float(pca_dict_iso[idx][0]),
+                    "y": float(pca_dict_iso[idx][1]),
+                    "cluster_id": cluster_id,
+                    "attack_type": attack_type,
+                    "index": int(idx)
                 })
                 
         end_time = time.time()
