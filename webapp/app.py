@@ -18,11 +18,13 @@ class NumpyEncoder(json.JSONEncoder):
                             np.int16, np.int32, np.int64, np.uint8,
                             np.uint16, np.uint32, np.uint64)):
             return int(obj)
-        elif isinstance(obj, (np.float_, np.float16, np.float32, 
+        elif isinstance(obj, (np.float16, np.float32, 
                               np.float64)):
             return float(obj)
         elif isinstance(obj, (np.ndarray,)): 
             return obj.tolist()
+        elif isinstance(obj, (np.bool_, bool)):
+            return bool(obj)
         return json.JSONEncoder.default(self, obj)
 
 @app.route('/')
@@ -75,15 +77,15 @@ def download_report(model_type, filename):
         results = handler.analyze(filepath) # Fallback
     
     if model_type == 'autoencoder':
-        anomalies = results['autoencoder']['all_anomalies']
+        model_results = results['autoencoder']
     elif model_type == 'isolation_forest':
-        # Isolation forest results usually have 'all_anomalies' populated now
-        anomalies = results['isolation_forest'].get('all_anomalies', [])
+        model_results = results.get('isolation_forest', {})
     else:
         return "Invalid model type.", 400
         
-    report_path = generate_report(model_type, anomalies, filename)
+    report_path = generate_report(model_type, model_results, filename)
     return send_file(report_path, as_attachment=True)
 
 if __name__ == '__main__':
-    app.run(debug=True, port=5000)
+    app.run(debug=True, use_reloader=False, port=5000)
+

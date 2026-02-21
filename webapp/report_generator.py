@@ -70,15 +70,36 @@ class PDFReport(FPDF):
         self.line(10, self.get_y(), 200, self.get_y())
         self.ln(4)
 
-def generate_report(model_name, anomalies, filename):
+def generate_report(model_name, model_results, filename):
     pdf = PDFReport()
     pdf.add_page()
+    
+    anomalies = model_results.get('anomalies', [])
+    clusters = model_results.get('clusters', [])
     
     pdf.set_font('Arial', 'B', 12)
     pdf.cell(0, 10, f"Model: {model_name}", 0, 1)
     pdf.cell(0, 10, f"Source File: {filename}", 0, 1)
     pdf.cell(0, 10, f"Total Anomalies Found: {len(anomalies)}", 0, 1)
-    pdf.ln(10)
+    pdf.cell(0, 10, f"Total Clusters Detected: {len(clusters)}", 0, 1)
+    pdf.ln(5)
+    
+    # Cluster Overview
+    pdf.set_font('Arial', 'B', 12)
+    pdf.cell(0, 8, "Detected Attack Clusters", 0, 1)
+    pdf.set_font('Arial', '', 10)
+    for c in clusters:
+        pdf.set_font('Arial', 'B', 10)
+        pdf.cell(0, 6, f"[{c['attack_type']}] - Severity: {c['severity']} | Confidence: {float(c['confidence']):.2f} | Logs: {c['size']}", 0, 1)
+        pdf.set_font('Arial', '', 9)
+        pdf.multi_cell(0, 5, f"Reasoning: {c['reasoning']}")
+        pdf.multi_cell(0, 5, f"Common Pattern: {c['common_pattern']}")
+        pdf.ln(3)
+
+    pdf.add_page()
+    pdf.set_font('Arial', 'B', 12)
+    pdf.cell(0, 10, "Detailed Anomaly Logs", 0, 1)
+    pdf.ln(5)
     
     for item in anomalies:
         pdf.add_anomaly(
