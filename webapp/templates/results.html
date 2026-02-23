@@ -443,6 +443,66 @@
         </div>
     </div>
 
+    <!-- Cluster Specific Logs Details Modal -->
+    <div class="modal fade" id="clusterLogsDetailModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header border-bottom border-secondary">
+                    <h5 class="modal-title fw-bold">Cluster Overview: <span id="clModalClusterId"
+                            class="text-primary mono-font"></span></h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body p-4">
+                    <div class="row g-4 mb-4">
+                        <div class="col-md-6">
+                            <label class="small text-secondary fw-bold text-uppercase mb-1">Attack Type</label>
+                            <div class="text-white fw-bold fs-5" id="clModalType"></div>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="small text-secondary fw-bold text-uppercase mb-1">Severity Rating</label>
+                            <div id="clModalSeverity" class="fs-5"></div>
+                        </div>
+                    </div>
+
+                    <div class="row g-4 mb-4">
+                        <div class="col-md-6">
+                            <div class="card bg-dark border-secondary h-100">
+                                <div class="card-header border-bottom border-secondary pt-3 pb-2">
+                                    <h6 class="fw-bold text-primary mb-0"><i class="bi bi-robot me-2"></i>AI Reasoning &
+                                        Prediction</h6>
+                                </div>
+                                <div class="card-body">
+                                    <p class="mb-0 small text-light" id="clModalAiExp" style="line-height: 1.6;"></p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="card bg-black border-secondary h-100">
+                                <div class="card-header border-bottom border-secondary pt-3 pb-2">
+                                    <h6 class="fw-bold text-success mb-0"><i class="bi bi-bar-chart-steps me-2"></i>SHAP
+                                        Feature Analysis</h6>
+                                </div>
+                                <div class="card-body">
+                                    <p class="mb-0 small text-muted" id="clModalShapExp" style="line-height: 1.6;"></p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <h6 class="text-secondary fw-bold text-uppercase mb-3 mt-4 border-bottom border-secondary pb-2">
+                        Anomalous Logs ID List (<span id="clModalLogCount"></span> detected)
+                    </h6>
+                    <div id="clModalLogList" class="p-3 bg-dark border border-secondary rounded">
+                        <!-- Dynamic Anomaly IDs -->
+                    </div>
+                </div>
+                <div class="modal-footer border-top border-secondary">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <div class="modal fade" id="logModal" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog modal-lg modal-dialog-centered">
             <!-- Modal Content Same As Before -->
@@ -565,33 +625,170 @@
             }, 400);
         }
 
-        // Highlight table based on cluster and scroll to it
+        // Show specific cluster details inside a custom view above the hidden table
         function showClusterLogs(clusterId, model) {
             // Switch to appropriate log tab
             let targetTab = new bootstrap.Tab(document.querySelector(`#${model}-log-tab`));
             targetTab.show();
 
-            // Filter the table specifically for this cluster
+            const table = document.getElementById(`${model}LogTable`);
+            const container = table.closest('.cyber-table');
+
+            // Hide the main table temporarily to avoid clutter
+            table.style.display = 'none';
+
+            let clusterData = null;
+            let clusterLogsArray = [];
+
+            // Gather logic for the target cluster
             const rows = document.querySelectorAll(`.${model}-log-row`);
             rows.forEach(r => {
                 if (r.getAttribute('data-cluster-id') === clusterId) {
-                    r.style.display = 'table-row';
-                    r.style.backgroundColor = 'rgba(88, 166, 255, 0.1)';
-                    setTimeout(() => r.style.backgroundColor = '', 2000); // fade out highlight
-                } else {
-                    r.style.display = 'none'; // hide others temporarily!
+                    const btn = r.querySelector('.btn-view-log');
+                    if (btn) {
+                        try {
+                            const data = JSON.parse(btn.getAttribute('data-log'));
+                            if (!clusterData) clusterData = data;
+                            clusterLogsArray.push(data);
+                        } catch (e) {
+                            console.error("Failed to parse log data for row", e);
+                        }
+                    }
                 }
             });
 
-            // Add a reset filter button or rely on user knowing
-            // To be simple, scroll to the table
-            document.getElementById(`${model}LogTable`).scrollIntoView({ behavior: 'smooth' });
+            if (!clusterData) return;
+
+            // Remove any previously inserted active cluster view
+            const oldView = document.getElementById('active-cluster-view');
+            if (oldView) {
+                oldView.remove();
+            }
+
+            // Create the new standalone Cluster Overview
+            const viewDiv = document.createElement('div');
+            viewDiv.id = 'active-cluster-view';
+            viewDiv.className = 'card bg-transparent border-0 mb-4';
+
+            let severityHtml = '<span class="badge bg-secondary">Low</span>';
+            if (clusterData.severity === 'Critical') severityHtml = '<span class="badge bg-danger">Critical</span>';
+            else if (clusterData.severity === 'High') severityHtml = '<span class="badge bg-warning text-dark">High</span>';
+            else if (clusterData.severity === 'Medium') severityHtml = '<span class="badge bg-info text-dark">Medium</span>';
+
+            const safeAiExp = clusterData.llm_prediction || "AI Prediction unavailable.";
+            const safeShapExp = clusterData.explanation || "SHAP Explanation unavailable.";
+
+            // Build the accordion rows
+            let accordionLogsHtml = '';
+            clusterLogsArray.forEach(log => {
+                const safeJson = JSON.stringify(log).replace(/'/g, "&#39;").replace(/"/g, "&quot;");
+                accordionLogsHtml += `
+                    <div class="list-group-item bg-black border-secondary d-flex justify-content-between align-items-center py-3">
+                        <div class="me-3">
+                            <span class="badge bg-dark border border-secondary text-light mono-font me-2" style="font-size: 0.85em;">#${log.index}</span>
+                            <span class="text-muted small text-break">${log.explanation}</span>
+                        </div>
+                        <button class="btn btn-sm btn-outline-primary text-nowrap" onclick='viewLogFromClusterBtn(this)' data-log="${safeJson}">
+                            <i class="bi bi-eye"></i> View Entire Log
+                        </button>
+                    </div>
+                `;
+            });
+
+            viewDiv.innerHTML = `
+                <div class="card-header border-bottom border-secondary d-flex justify-content-between align-items-center bg-dark rounded-top py-3">
+                    <h5 class="mb-0 text-white fw-bold"><i class="bi bi-diagram-3 me-2"></i>Cluster Overview: <span class="text-primary mono-font">${clusterId}</span></h5>
+                    <button class="btn btn-sm btn-outline-danger" onclick="resetClusterFilter('${model}')">
+                        <i class="bi bi-arrow-return-left"></i> Back to Main Table
+                    </button>
+                </div>
+                <div class="card-body p-4 bg-black rounded-bottom border border-top-0 border-secondary">
+                    <div class="row g-4 mb-4">
+                        <div class="col-md-6">
+                            <label class="small text-secondary fw-bold text-uppercase mb-1">Attack Type</label>
+                            <div class="text-white fw-bold fs-5">${clusterData.attack_type}</div>
+                        </div>
+                        <div class="col-md-6 text-md-end">
+                            <label class="small text-secondary fw-bold text-uppercase mb-1">Severity Rating</label>
+                            <div>${severityHtml}</div>
+                        </div>
+                    </div>
+                    
+                    <div class="row g-4 mb-4">
+                        <div class="col-md-6">
+                            <div class="card bg-dark border-secondary h-100">
+                                <div class="card-header border-bottom border-secondary pt-3 pb-2">
+                                    <h6 class="fw-bold text-primary mb-0"><i class="bi bi-robot me-2"></i>AI Reasoning & Prediction</h6>
+                                </div>
+                                <div class="card-body">
+                                    <p class="mb-0 small text-light" style="line-height: 1.6;">${safeAiExp}</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="card bg-dark border-secondary h-100">
+                                <div class="card-header border-bottom border-secondary pt-3 pb-2">
+                                    <h6 class="fw-bold text-success mb-0"><i class="bi bi-bar-chart-steps me-2"></i>SHAP Feature Analysis</h6>
+                                </div>
+                                <div class="card-body">
+                                    <p class="mb-0 small text-muted" style="line-height: 1.6;">${safeShapExp}</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="accordion mt-4" id="clusterLogsAccordion">
+                        <div class="accordion-item border border-secondary" style="background-color: #161b22;">
+                            <h2 class="accordion-header" id="headingLogs">
+                                <button class="accordion-button collapsed fw-bold text-white shadow-none" type="button" data-bs-toggle="collapse" data-bs-target="#collapseLogs" aria-expanded="false" aria-controls="collapseLogs" style="background-color: #1c2128;">
+                                    <i class="bi bi-list-ul me-2"></i> View All Anomalies (${clusterLogsArray.length} Logs)
+                                </button>
+                            </h2>
+                            <div id="collapseLogs" class="accordion-collapse collapse" aria-labelledby="headingLogs" data-bs-parent="#clusterLogsAccordion">
+                                <div class="accordion-body p-0">
+                                    <div class="list-group list-group-flush rounded-bottom" style="max-height: 400px; overflow-y: auto;">
+                                        ${accordionLogsHtml}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            container.prepend(viewDiv);
+            container.scrollIntoView({ behavior: 'smooth' });
+        }
+
+        // Action helper for the synthesized view button
+        function viewLogFromClusterBtn(btn) {
+            viewLog(JSON.parse(btn.getAttribute('data-log')));
+        }
+
+        // Action when clearing the filter entirely
+        function resetClusterFilter(model) {
+            const oldView = document.getElementById('active-cluster-view');
+            if (oldView) oldView.remove();
+
+            // Show the table again!
+            if (model) {
+                const table = document.getElementById(`${model}LogTable`);
+                if (table) table.style.display = 'table';
+            } else {
+                if (document.getElementById('aeLogTable')) document.getElementById('aeLogTable').style.display = 'table';
+                if (document.getElementById('isoLogTable')) document.getElementById('isoLogTable').style.display = 'table';
+            }
         }
 
         // Reset filter
         document.querySelectorAll('.nav-link').forEach(l => {
             l.addEventListener('click', () => {
-                document.querySelectorAll('.log-row').forEach(r => r.style.display = 'table-row');
+                const oldView = document.getElementById('active-cluster-view');
+                if (oldView) oldView.remove();
+
+                // Show all tables again when switching tabs
+                if (document.getElementById('aeLogTable')) document.getElementById('aeLogTable').style.display = 'table';
+                if (document.getElementById('isoLogTable')) document.getElementById('isoLogTable').style.display = 'table';
             });
         });
 
