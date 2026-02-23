@@ -10921,5 +10921,38 @@
             "Implement data loss prevention tools to monitor and prevent unauthorized data transfers",
             "Regularly review and update access controls to limit data access to authorized personnel only"
         ]
+    },
+    "688b6d78d5d240478c129cc3029560b5": {
+        "attack_type": "DoS",
+        "confidence": 0.9,
+        "severity": "High",
+        "reasoning": "The cluster shows a high number of HTTP requests with status 500 and unusually high response times, indicating a potential Denial of Service (DoS) attack.",
+        "common_pattern": "Multiple POST requests with status 500 and high response times to the same destination IP",
+        "mitigation_steps": [
+            "Implement rate limiting on incoming requests",
+            "Monitor server performance metrics for anomalies"
+        ]
+    },
+    "42a31f2cc05be44778a570377d3a3a6d": {
+        "attack_type": "Rate limiting anomalies",
+        "confidence": 0.9,
+        "severity": "High",
+        "reasoning": "The cluster shows a consistent pattern of failed login attempts with a high rate of 1.0, indicating a potential brute force attack or automated login attempts.",
+        "common_pattern": "The common behavior in this cluster is the repeated use of POST and GET methods for login/authentication endpoints with high response times and zero bytes exchanged.",
+        "mitigation_steps": [
+            "Implement rate limiting on login attempts to prevent brute force attacks",
+            "Implement multi-factor authentication to enhance security"
+        ]
+    },
+    "a9fc7898b7a615b313ea69fe0e07d9ac": {
+        "attack_type": "Rate limiting anomalies",
+        "confidence": 0.9,
+        "severity": "High",
+        "reasoning": "The cluster shows a consistent pattern of multiple POST requests with zero bytes and varying response times within a short time span, indicating a potential abuse of the server's rate limiting mechanism.",
+        "common_pattern": "The common behavior in this cluster is the repeated POST requests with zero bytes and varying response times.",
+        "mitigation_steps": [
+            "Implement stricter rate limiting rules based on IP addresses or user sessions.",
+            "Monitor and analyze server logs regularly to detect and block suspicious patterns."
+        ]
     }
 }
