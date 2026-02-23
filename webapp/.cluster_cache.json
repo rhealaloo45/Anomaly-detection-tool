@@ -10954,5 +10954,60 @@
             "Implement stricter rate limiting rules based on IP addresses or user sessions.",
             "Monitor and analyze server logs regularly to detect and block suspicious patterns."
         ]
+    },
+    "b482f15e31832284db584c17a3eebe9f": {
+        "attack_type": "Remote Code Execution (RCE)",
+        "confidence": 0.9,
+        "severity": "Critical",
+        "reasoning": "The cluster shows a consistent pattern of HTTP requests with high response times and low bytes, indicating potential exploitation of vulnerabilities to execute remote code.",
+        "common_pattern": "The logs show multiple POST requests to specific endpoints with abnormal response times and low bytes, suggesting potential malicious code execution.",
+        "mitigation_steps": [
+            "Implement strict input validation to prevent code injection attacks",
+            "Regularly update and patch software to address known vulnerabilities"
+        ]
+    },
+    "e16a1ba1b58b0d9595048d38c8ff370e": {
+        "attack_type": "Remote Code Execution (RCE)",
+        "confidence": 0.9,
+        "severity": "Critical",
+        "reasoning": "The cluster shows a consistent pattern of high response times and unusual bytes transferred, indicating potential exploitation of vulnerabilities to execute remote code.",
+        "common_pattern": "The logs exhibit POST requests to the same endpoint with abnormal response times and bytes transferred, suggesting potential malicious code execution.",
+        "mitigation_steps": [
+            "Implement input validation to prevent code injection attacks",
+            "Regularly update and patch software to address known vulnerabilities"
+        ]
+    },
+    "36256ab685e5780ea95459a83ea98740": {
+        "attack_type": "Rate limiting anomalies",
+        "confidence": 0.9,
+        "severity": "High",
+        "reasoning": "The cluster shows a consistent mean response time and bytes across all logs, indicating a potential rate limiting mechanism in place.",
+        "common_pattern": "Consistent response time and bytes values across all logs",
+        "mitigation_steps": [
+            "Implement dynamic rate limiting based on client behavior",
+            "Monitor and adjust rate limits based on traffic patterns"
+        ]
+    },
+    "ece90b1ab059b564879a49e371f9f4df": {
+        "attack_type": "Remote Code Execution (RCE)",
+        "confidence": 0.9,
+        "severity": "Critical",
+        "reasoning": "The cluster shows a consistent pattern of high response times and unusual HTTP requests, indicating potential exploitation of vulnerabilities to execute remote code.",
+        "common_pattern": "The logs exhibit abnormal response times and HTTP requests that could be indicative of attempts to exploit vulnerabilities and execute code remotely.",
+        "mitigation_steps": [
+            "Implement strict input validation to prevent code injection attacks",
+            "Regularly update and patch software to address known vulnerabilities"
+        ]
+    },
+    "ac29f1977889fcae035f8b510ab48674": {
+        "attack_type": "Data Exfiltration",
+        "confidence": 0.85,
+        "severity": "High",
+        "reasoning": "The cluster shows a consistent pattern of high response times and low bytes transferred, indicating potential data exfiltration activities.",
+        "common_pattern": "The logs exhibit abnormal response times and low data transfer sizes, suggesting the exfiltration of sensitive information.",
+        "mitigation_steps": [
+            "Implement network monitoring to detect unusual data transfer patterns",
+            "Encrypt sensitive data to prevent unauthorized access"
+        ]
     }
 }

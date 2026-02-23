@@ -28,7 +28,8 @@ The application is a **Flask-based web interface** that serves as a frontend for
          \                 /
           \               /
            v             v
-      [Clustering (PCA + K-Means)]
+      [Clustering (HDBSCAN)]
+          |             | -> (PCA 2D Projection for UI Visualization)
                    |
                    v
        [Generative AI (OpenAI GPT)]
@@ -42,9 +43,9 @@ The application is a **Flask-based web interface** that serves as a frontend for
 1.  **Ingestion & Parsing**: User uploads a server log file. The parser intelligently determines tabular delimiters or falls back to unstructured robust regex mapping (e.g., stripping bad Excel quotes and chaining multi-IPs).
 2.  **Preprocessing**: Data is dynamically mapped, cleaned, and transformed into numeric features (safe missing value imputation).
 3.  **Detection**: Two independent models (Autoencoder & Isolation Forest) scan the data for anomalies. Isolation Forest includes a dynamic threshold fallback.
-4.  **Clustering**: The detected anomalies are projected into a lower dimensional space (PCA) and clustered algorithmically to group similar attacks together.
+4.  **Clustering**: The detected anomalies are grouped together algorithmically using HDBSCAN to isolate similar attack profiles. Simultaneously, PCA is used to project the data into a 2D space strictly for frontend visual scatter-plotting.
 5.  **Interpretation**: OpenAI analyzes the representative samples from each cluster to determine Attack Type, Severity, and an Explanation.
-6.  **Presentation & Caching**: Results are stored robustly (handling complex Numpy datatypes) into a JSON cache, then displayed on a dashboard and exported as PDF reports.
+6.  **Presentation & Caching**: Results are stored robustly (handling complex Numpy datatypes) into a JSON cache, then displayed on a highly interactive dashboard with drill-down accordion views designed to minimize visual clutter, and can be exported as PDF reports.
 
 ---
 
@@ -76,16 +77,22 @@ Before feeding data to models, raw logs are transformed:
 
 ### D. Explainability & AI Integration
 #### Generative AI Classification (OpenAI GPT)
-*   Instead of making the AI evaluate thousands of logs, anomalies are first grouped together using PCA and K-Means.
-*   The system constructs a prompt containing representative log patterns from anomalous clusters.
+*   Instead of making the AI evaluate thousands of logs, anomalies are first grouped together using HDBSCAN.
+*   **The LLM Prompt Details**: Because sending all cluster logs to the LLM would exceed token limits and cost heavily, the system distills the cluster into a structured profile containing:
+    *   **Aggregated Analytics**: Mathematical mean for `response_time` and total `bytes`.
+    *   **Categorical Modes**: The most frequent Source IP, Destination IP, and Target Port across the cluster.
+    *   **Failure Rates**: The percentage of HTTP requests that failed (e.g., 401 or 403), vital for detecting brute-force activity.
+    *   **Feature Importance (SHAP)**: The system averages the underlying SHAP values across the cluster to provide the LLM with the exact *Top 3 Features* the ML models used to trigger the anomaly.
+    *   **Representative Logs**: Exactly 5 raw logs are extracted from the cluster to provide the AI with concrete, deterministic evidence of the attack pattern without overwhelming context limitations.
 *   The internal prompting aggressively constrains the LLM to map its findings against a specific, expansive cybersecurity threat portfolio, explicitly evaluating for: **Cross-Site Scripting (XSS), Sensitive Information Disclosure, SQL Injections, Insecure Deserialization, Broken Authentication & Failures, SSTI, Path Traversals (LFI), OS Command Injection & Remote Code Execution (RCE), CSRF, Rate Limiting Anomalies / DoS, IDOR, Clickjacking, Insecure Input Validation, Open Redirects, Cache Deception & Poisoning, SSRF, Hardcoded Credentials, and Recon/Scanner Indicators**.
 *   **The LLM Returns**:
     *   **Attack Type**: One of the categorized threats from the explicit list above.
     *   **Severity**: (Low/Medium/High/Critical).
     *   **Explanation**: A human-readable summary.
 
-### E. Reporting & Consistency
-To ensure report consistency between the web view and the PDF:
+### E. Presentation, Reporting & Consistency
+To ensure report consistency between the web view and the PDF, and provide a clean user experience:
+*   **Interactive UI**: The frontend dashboard utilizes dynamic inline cluster overviews, featuring expandable accordion components that allow users to cleanly drill down into cluster-specific anomalies and view raw log subsets without cluttering the master data tables.
 *   **Caching**: Results from the initial analysis are serialized utilizing a custom `NumpyEncoder` capable of safely dumping `np.bool_` and `np.float32` structures to a JSON file (`filename.json`).
 *   **PDF Generation (`report_generator.py`)**: Reads from this cache to generate the repeatable PDF.
 
@@ -98,7 +105,7 @@ To ensure report consistency between the web view and the PDF:
 | **Frontend** | HTML5, Bootstrap 5 (Dark Theme), Jinja2 Templating |
 | **Backend** | Python 3.x, Flask |
 | **ML Engine** | TensorFlow (Keras), Scikit-Learn |
-| **Analysis** | PCA, K-Means Clustering, NumPy, Pandas |
+| **Analysis** | PCA, HDBSCAN Clustering, NumPy, Pandas |
 | **AI Layer** | OpenAI API (GPT-3.5-Turbo) |
 
 ## 4. Performance Optimization
