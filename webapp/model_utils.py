@@ -628,7 +628,7 @@ class ModelHandler:
         Key Anomalous Features: {shap_text}
         
         Provide a JSON response with the following keys:
-        - "attack_type": Short name of the attack/issue (e.g., "SQL Injection", "Brute Force", "Data Exfiltration", "Suspicious User Agent", or "Configuration Issue").
+        - "attack_type": Short name of the attack/issue. Explicitly consider threats like: Cross Site Scripting (XSS), Sensitive Information Disclosure, SQL Injections, Insecure Deserialization, Broken Authentication, SSTI, Path Traversals, OS Command Injection, CSRF, Rate limiting anomalies, IDOR, Clickjacking, Insecure input validation, Open redirect, Cache Deception, Cache Poisoning, LFI, SSRF, Hardcoded Credentials, Remote Code Execution (RCE), Authentication Failures, Recon/Scanner Indicators, DoS, Data Exfiltration, or Configuration Issue.
         - "severity": One of ["Critical", "High", "Medium", "Low"].
         - "llm_prediction": A detailed prediction of what kind of attack has taken place based purely on the log analysis.
         - "explanation": A clear 1-2 sentence explanation of why this was flagged, referencing the specific features or log content logic.
@@ -652,7 +652,7 @@ class ModelHandler:
         Feature Analysis: {shap_text}
         
         Provide a JSON response with the following keys:
-        - "attack_type": Short name of the attack/issue (e.g., "SQL Injection", "Brute Force", "Data Exfiltration", "Suspicious User Agent", or "Configuration Issue").
+        - "attack_type": Short name of the attack/issue. Explicitly consider threats like: Cross Site Scripting (XSS), Sensitive Information Disclosure, SQL Injections, Insecure Deserialization, Broken Authentication, SSTI, Path Traversals, OS Command Injection, CSRF, Rate limiting anomalies, IDOR, Clickjacking, Insecure input validation, Open redirect, Cache Deception, Cache Poisoning, LFI, SSRF, Hardcoded Credentials, Remote Code Execution (RCE), Authentication Failures, Recon/Scanner Indicators, DoS, Data Exfiltration, or Configuration Issue.
         - "severity": One of ["Critical", "High", "Medium", "Low"].
         - "llm_prediction": A detailed prediction of what kind of attack has taken place based purely on the log analysis.
         - "explanation": A clear 1-2 sentence explanation of why this was flagged, referencing the specific features or log content logic.
