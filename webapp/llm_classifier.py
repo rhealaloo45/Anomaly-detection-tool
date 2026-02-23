@@ -69,7 +69,7 @@ def classify_cluster(cluster_summary):
     {json.dumps(cluster_summary['representative_logs'][:3], indent=2)}
     
     Based on this behavioral pattern across the cluster, provide a JSON response with ONLY the following keys:
-    - "attack_type": "Short name of attack (e.g., SSH Brute Force, Port Scan, DoS, SQL Injection, Data Exfiltration, Configuration Issue, etc.)"
+    - "attack_type": "Short name of attack. Explicitly consider threats like: Cross Site Scripting (XSS), Sensitive Information Disclosure, SQL Injections, Insecure Deserialization, Broken Authentication, SSTI, Path Traversals, OS Command Injection, CSRF, Rate limiting anomalies, IDOR, Clickjacking, Insecure input validation, Open redirect, Cache Deception, Cache Poisoning, LFI, SSRF, Hardcoded Credentials, Remote Code Execution (RCE), Authentication Failures, Recon/Scanner Indicators, DoS, Data Exfiltration, or Configuration Issue."
     - "confidence": "Decimal between 0 and 1 indicating your confidence"
     - "severity": "Critical, High, Medium, or Low"
     - "reasoning": "1-2 sentence explanation of why this grouping represents this attack"
