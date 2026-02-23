@@ -78,8 +78,9 @@ Before feeding data to models, raw logs are transformed:
 #### Generative AI Classification (OpenAI GPT)
 *   Instead of making the AI evaluate thousands of logs, anomalies are first grouped together using PCA and K-Means.
 *   The system constructs a prompt containing representative log patterns from anomalous clusters.
+*   The internal prompting aggressively constrains the LLM to map its findings against a specific, expansive cybersecurity threat portfolio, explicitly evaluating for: **Cross-Site Scripting (XSS), Sensitive Information Disclosure, SQL Injections, Insecure Deserialization, Broken Authentication & Failures, SSTI, Path Traversals (LFI), OS Command Injection & Remote Code Execution (RCE), CSRF, Rate Limiting Anomalies / DoS, IDOR, Clickjacking, Insecure Input Validation, Open Redirects, Cache Deception & Poisoning, SSRF, Hardcoded Credentials, and Recon/Scanner Indicators**.
 *   **The LLM Returns**:
-    *   **Attack Type**: (e.g., "XSS Attempt", "Directory Traversal").
+    *   **Attack Type**: One of the categorized threats from the explicit list above.
     *   **Severity**: (Low/Medium/High/Critical).
     *   **Explanation**: A human-readable summary.
 

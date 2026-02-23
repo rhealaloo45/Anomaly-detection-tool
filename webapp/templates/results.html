@@ -190,40 +190,48 @@
                 <div class="row">
                     <div class="col-md-7">
                         <div class="row g-3">
-                            {% for cluster in results.autoencoder.clusters %}
+                            {% set ae_grouped = results.autoencoder.clusters | groupby('attack_type') %}
+                            {% for attack_type, clusters in ae_grouped %}
+                            {% set ns = namespace(total_size=0, has_critical=false, has_high=false, has_medium=false) %}
+                            {% for c in clusters %}
+                            {% set ns.total_size = ns.total_size + c.size %}
+                            {% if c.severity == 'Critical' %}{% set ns.has_critical = true %}{% endif %}
+                            {% if c.severity == 'High' %}{% set ns.has_high = true %}{% endif %}
+                            {% if c.severity == 'Medium' %}{% set ns.has_medium = true %}{% endif %}
+                            {% endfor %}
+                            {% set highest_sev = 'Critical' if ns.has_critical else 'High' if ns.has_high else 'Medium'
+                            if ns.has_medium else 'Low' %}
+
                             <div class="col-12">
                                 <div class="card stat-card p-3">
-                                    <div class="d-flex justify-content-between align-items-start">
+                                    <div class="d-flex justify-content-between align-items-center">
                                         <div>
-                                            <h5 class="text-white fw-bold mb-1">{{ cluster.attack_type }}</h5>
+                                            <h5 class="text-white fw-bold mb-1">{{ attack_type }}</h5>
                                             <div class="d-flex gap-2 align-items-center mt-2 flex-wrap">
+                                                <span class="badge bg-secondary"><i class="bi bi-diagram-3"></i> {{
+                                                    clusters|length }} clusters</span>
                                                 <span class="badge bg-secondary"><i class="bi bi-hash"></i> {{
-                                                    cluster.size }} logs</span>
-                                                {% if cluster.severity == 'Critical' %}<span
+                                                    ns.total_size }} logs</span>
+                                                {% if highest_sev == 'Critical' %}<span
                                                     class="badge bg-danger">Critical</span>
-                                                {% elif cluster.severity == 'High' %}<span
+                                                {% elif highest_sev == 'High' %}<span
                                                     class="badge bg-warning text-dark">High</span>
-                                                {% elif cluster.severity == 'Medium' %}<span
+                                                {% elif highest_sev == 'Medium' %}<span
                                                     class="badge bg-info text-dark">Medium</span>
                                                 {% else %}<span class="badge bg-secondary">Low</span>{% endif %}
-                                                <span class="badge border border-secondary text-muted">Confidence: {{
-                                                    cluster.confidence | float | round(2) }}</span>
                                             </div>
-                                            <p class="text-muted mt-2 mb-1 small"><strong>Reasoning:</strong> {{
-                                                cluster.reasoning }}</p>
-                                            <p class="text-muted mb-0 small"><strong>Common Pattern:</strong> {{
-                                                cluster.common_pattern }}</p>
                                         </div>
-                                        <button class="btn btn-sm btn-outline-primary ms-3"
-                                            onclick="showClusterLogs('{{ cluster.cluster_id }}', 'ae')">
-                                            View {{ cluster.size }} Logs
+                                        <button class="btn btn-sm btn-outline-primary ms-3 text-nowrap btn-attack-modal"
+                                            data-attack="{{ attack_type }}"
+                                            data-clusters="{{ clusters|tojson|forceescape }}" data-model="ae">
+                                            View Clusters
                                         </button>
                                     </div>
                                 </div>
                             </div>
                             {% else %}
                             <div class="col-12">
-                                <p class="text-muted p-4 text-center border border-secondary rounded">No clusters
+                                <p class="text-muted p-4 text-center border border-secondary rounded">No attack types
                                     detected.</p>
                             </div>
                             {% endfor %}
@@ -245,40 +253,48 @@
                 <div class="row">
                     <div class="col-md-7">
                         <div class="row g-3">
-                            {% for cluster in results.isolation_forest.clusters %}
+                            {% set iso_grouped = results.isolation_forest.clusters | groupby('attack_type') %}
+                            {% for attack_type, clusters in iso_grouped %}
+                            {% set ns = namespace(total_size=0, has_critical=false, has_high=false, has_medium=false) %}
+                            {% for c in clusters %}
+                            {% set ns.total_size = ns.total_size + c.size %}
+                            {% if c.severity == 'Critical' %}{% set ns.has_critical = true %}{% endif %}
+                            {% if c.severity == 'High' %}{% set ns.has_high = true %}{% endif %}
+                            {% if c.severity == 'Medium' %}{% set ns.has_medium = true %}{% endif %}
+                            {% endfor %}
+                            {% set highest_sev = 'Critical' if ns.has_critical else 'High' if ns.has_high else 'Medium'
+                            if ns.has_medium else 'Low' %}
+
                             <div class="col-12">
                                 <div class="card stat-card danger-border p-3">
-                                    <div class="d-flex justify-content-between align-items-start">
+                                    <div class="d-flex justify-content-between align-items-center">
                                         <div>
-                                            <h5 class="text-white fw-bold mb-1">{{ cluster.attack_type }}</h5>
+                                            <h5 class="text-white fw-bold mb-1">{{ attack_type }}</h5>
                                             <div class="d-flex gap-2 align-items-center mt-2 flex-wrap">
+                                                <span class="badge bg-secondary"><i class="bi bi-diagram-3"></i> {{
+                                                    clusters|length }} clusters</span>
                                                 <span class="badge bg-secondary"><i class="bi bi-hash"></i> {{
-                                                    cluster.size }} logs</span>
-                                                {% if cluster.severity == 'Critical' %}<span
+                                                    ns.total_size }} logs</span>
+                                                {% if highest_sev == 'Critical' %}<span
                                                     class="badge bg-danger">Critical</span>
-                                                {% elif cluster.severity == 'High' %}<span
+                                                {% elif highest_sev == 'High' %}<span
                                                     class="badge bg-warning text-dark">High</span>
-                                                {% elif cluster.severity == 'Medium' %}<span
+                                                {% elif highest_sev == 'Medium' %}<span
                                                     class="badge bg-info text-dark">Medium</span>
                                                 {% else %}<span class="badge bg-secondary">Low</span>{% endif %}
-                                                <span class="badge border border-secondary text-muted">Confidence: {{
-                                                    cluster.confidence | float | round(2) }}</span>
                                             </div>
-                                            <p class="text-muted mt-2 mb-1 small"><strong>Reasoning:</strong> {{
-                                                cluster.reasoning }}</p>
-                                            <p class="text-muted mb-0 small"><strong>Common Pattern:</strong> {{
-                                                cluster.common_pattern }}</p>
                                         </div>
-                                        <button class="btn btn-sm btn-outline-primary ms-3"
-                                            onclick="showClusterLogs('{{ cluster.cluster_id }}', 'iso')">
-                                            View {{ cluster.size }} Logs
+                                        <button class="btn btn-sm btn-outline-primary ms-3 text-nowrap btn-attack-modal"
+                                            data-attack="{{ attack_type }}"
+                                            data-clusters="{{ clusters|tojson|forceescape }}" data-model="iso">
+                                            View Clusters
                                         </button>
                                     </div>
                                 </div>
                             </div>
                             {% else %}
                             <div class="col-12">
-                                <p class="text-muted p-4 text-center border border-secondary rounded">No clusters
+                                <p class="text-muted p-4 text-center border border-secondary rounded">No attack types
                                     detected.</p>
                             </div>
                             {% endfor %}
@@ -412,6 +428,21 @@
     </div>
 
     <!-- Modals (Re-used) -->
+    <div class="modal fade" id="attackClustersModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header border-bottom border-secondary">
+                    <h5 class="modal-title fw-bold">Attack Analysis: <span id="attackModalTitle"
+                            class="text-primary"></span></h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body" id="attackModalBody">
+                    <!-- Dynamic content -->
+                </div>
+            </div>
+        </div>
+    </div>
+
     <div class="modal fade" id="logModal" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog modal-lg modal-dialog-centered">
             <!-- Modal Content Same As Before -->
@@ -465,6 +496,16 @@
                 });
             });
 
+            // Attack Modal click binding
+            document.querySelectorAll('.btn-attack-modal').forEach(btn => {
+                btn.addEventListener('click', function () {
+                    const attackType = this.getAttribute('data-attack');
+                    const clusters = JSON.parse(this.getAttribute('data-clusters'));
+                    const modelStr = this.getAttribute('data-model');
+                    showAttackModal(attackType, clusters, modelStr);
+                });
+            });
+
             // PCA Visualization initialization
             const aePcaData = {{ results.autoencoder.pca_data | tojson | safe
         }};
@@ -473,6 +514,56 @@
         if (aePcaData && aePcaData.length > 0) initPcaChart('pcaChartAe', aePcaData);
         if (isoPcaData && isoPcaData.length > 0) initPcaChart('pcaChartIso', isoPcaData);
         });
+
+        function showAttackModal(attackType, clusters, model) {
+            document.getElementById('attackModalTitle').innerText = attackType;
+            let html = '';
+
+            html += `<p class="text-muted mb-4">We found <strong>${clusters.length}</strong> distinct clusters exhibiting patterns associated with <strong>${attackType}</strong>.</p>`;
+
+            html += '<div class="row g-3">';
+            clusters.forEach(cluster => {
+                let badge = '<span class="badge bg-secondary">Low</span>';
+                if (cluster.severity === 'Critical') badge = '<span class="badge bg-danger">Critical</span>';
+                else if (cluster.severity === 'High') badge = '<span class="badge bg-warning text-dark">High</span>';
+                else if (cluster.severity === 'Medium') badge = '<span class="badge bg-info text-dark">Medium</span>';
+
+                let confidence = parseFloat(cluster.confidence);
+                let confText = isNaN(confidence) ? "N/A" : confidence.toFixed(2);
+
+                html += `
+                    <div class="col-md-6">
+                        <div class="card stat-card h-100 p-3">
+                            <div class="d-flex justify-content-between align-items-start mb-2">
+                                <div class="d-flex gap-2">
+                                    <span class="badge bg-secondary"><i class="bi bi-hash"></i> ${cluster.size} logs</span>
+                                    ${badge}
+                                    <span class="badge border border-secondary text-muted">Conf: ${confText}</span>
+                                </div>
+                                <button class="btn btn-sm btn-cyber-primary text-nowrap" onclick="viewClusterLogsFromModal('${cluster.cluster_id}', '${model}')">
+                                    View Logs
+                                </button>
+                            </div>
+                            <p class="text-muted mt-2 mb-1 small"><strong>Reasoning:</strong> ${cluster.reasoning}</p>
+                            <p class="text-muted mb-0 small"><strong>Common Pattern:</strong> ${cluster.common_pattern}</p>
+                        </div>
+                    </div>
+                `;
+            });
+            html += '</div>';
+
+            document.getElementById('attackModalBody').innerHTML = html;
+            new bootstrap.Modal(document.getElementById('attackClustersModal')).show();
+        }
+
+        function viewClusterLogsFromModal(clusterId, model) {
+            const modalEl = document.getElementById('attackClustersModal');
+            let m = bootstrap.Modal.getInstance(modalEl);
+            if (m) m.hide();
+            setTimeout(() => {
+                showClusterLogs(clusterId, model);
+            }, 400);
+        }
 
         // Highlight table based on cluster and scroll to it
         function showClusterLogs(clusterId, model) {
