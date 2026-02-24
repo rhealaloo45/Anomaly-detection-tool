@@ -42,8 +42,10 @@ def upload_file():
         filepath = os.path.join(app.config['UPLOAD_FOLDER'], file.filename)
         file.save(filepath)
         
+        model_choice = request.form.get('model_choice', 'both')
+        
         # Analyze
-        results = handler.analyze(filepath)
+        results = handler.analyze(filepath, model_choice)
         
         if "error" in results:
             return render_template('index.html', error=results["error"])
@@ -56,7 +58,7 @@ def upload_file():
         except Exception as e:
             print(f"Error caching results: {e}")
             
-        return render_template('results.html', results=results, filename=file.filename)
+        return render_template('results.html', results=results, filename=file.filename, model_choice=model_choice)
 
 @app.route('/download/<model_type>/<filename>')
 def download_report(model_type, filename):

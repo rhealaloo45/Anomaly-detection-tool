@@ -152,11 +152,22 @@
                         <small class="text-muted d-block uppercase fw-bold" style="font-size: 0.7rem;">LOGS</small>
                         <span class="fw-bold text-white mono-font">{{ results.total_logs }}</span>
                     </div>
-                    {% if results.duration %}
+                    {% if results.duration_ae is defined %}
                     <div class="text-end border-end border-secondary pe-3">
-                        <small class="text-muted d-block uppercase fw-bold" style="font-size: 0.7rem;">GENERATED
-                            IN</small>
-                        <span class="fw-bold text-white mono-font">{{ results.duration }}s</span>
+                        <small class="text-muted d-block uppercase fw-bold" style="font-size: 0.7rem;">AE TIME</small>
+                        <span class="fw-bold text-white mono-font">{{ results.duration_ae }}s</span>
+                    </div>
+                    {% endif %}
+                    {% if results.duration_iso is defined %}
+                    <div class="text-end border-end border-secondary pe-3">
+                        <small class="text-muted d-block uppercase fw-bold" style="font-size: 0.7rem;">ISO TIME</small>
+                        <span class="fw-bold text-white mono-font">{{ results.duration_iso }}s</span>
+                    </div>
+                    {% endif %}
+                    {% if results.duration_llm is defined %}
+                    <div class="text-end border-end border-secondary pe-3">
+                        <small class="text-muted d-block uppercase fw-bold" style="font-size: 0.7rem;">LLM TIME</small>
+                        <span class="fw-bold text-white mono-font">{{ results.duration_llm }}s</span>
                     </div>
                     {% endif %}
                     {% set ae_count = results.autoencoder.count if results.autoencoder else 0 %}
@@ -174,19 +185,27 @@
             investigation time.</p>
 
         <ul class="nav nav-pills mb-3" id="clusterTab" role="tablist">
+            {% if model_choice in ['both', 'autoencoder'] %}
             <li class="nav-item" role="presentation">
-                <button class="nav-link active" id="ae-cluster-tab" data-bs-toggle="pill"
-                    data-bs-target="#ae-cluster-content" type="button" role="tab">Autoencoder Clusters</button>
+                <button class="nav-link {% if model_choice in ['both', 'autoencoder'] %}active{% endif %}"
+                    id="ae-cluster-tab" data-bs-toggle="pill" data-bs-target="#ae-cluster-content" type="button"
+                    role="tab">Autoencoder Clusters</button>
             </li>
+            {% endif %}
+            {% if model_choice in ['both', 'isolation_forest'] %}
             <li class="nav-item" role="presentation">
-                <button class="nav-link" id="iso-cluster-tab" data-bs-toggle="pill"
-                    data-bs-target="#iso-cluster-content" type="button" role="tab">Isolation Forest Clusters</button>
+                <button class="nav-link {% if model_choice == 'isolation_forest' %}active{% endif %}"
+                    id="iso-cluster-tab" data-bs-toggle="pill" data-bs-target="#iso-cluster-content" type="button"
+                    role="tab">Isolation Forest Clusters</button>
             </li>
+            {% endif %}
         </ul>
 
         <div class="tab-content" id="clusterTabContent">
             <!-- Autoencoder Clusters -->
-            <div class="tab-pane fade show active" id="ae-cluster-content" role="tabpanel">
+            {% if model_choice in ['both', 'autoencoder'] %}
+            <div class="tab-pane fade {% if model_choice in ['both', 'autoencoder'] %}show active{% endif %}"
+                id="ae-cluster-content" role="tabpanel">
                 <div class="row">
                     <div class="col-md-7">
                         <div class="row g-3">
@@ -247,9 +266,12 @@
                     </div>
                 </div>
             </div>
+            {% endif %}
 
             <!-- Isolation Forest Clusters -->
-            <div class="tab-pane fade" id="iso-cluster-content" role="tabpanel">
+            {% if model_choice in ['both', 'isolation_forest'] %}
+            <div class="tab-pane fade {% if model_choice == 'isolation_forest' %}show active{% endif %}"
+                id="iso-cluster-content" role="tabpanel">
                 <div class="row">
                     <div class="col-md-7">
                         <div class="row g-3">
@@ -310,6 +332,7 @@
                     </div>
                 </div>
             </div>
+            {% endif %}
         </div>
 
         <hr class="border-secondary my-5">
@@ -320,19 +343,27 @@
 
         <!-- Existing Tabs to maintain backward compatibility -->
         <ul class="nav nav-pills mb-3" id="logTab" role="tablist">
+            {% if model_choice in ['both', 'autoencoder'] %}
             <li class="nav-item" role="presentation">
-                <button class="nav-link active" id="ae-log-tab" data-bs-toggle="pill" data-bs-target="#ae-log-content"
-                    type="button" role="tab">Autoencoder Logs</button>
+                <button class="nav-link {% if model_choice in ['both', 'autoencoder'] %}active{% endif %}"
+                    id="ae-log-tab" data-bs-toggle="pill" data-bs-target="#ae-log-content" type="button"
+                    role="tab">Autoencoder Logs</button>
             </li>
+            {% endif %}
+            {% if model_choice in ['both', 'isolation_forest'] %}
             <li class="nav-item" role="presentation">
-                <button class="nav-link" id="iso-log-tab" data-bs-toggle="pill" data-bs-target="#iso-log-content"
-                    type="button" role="tab">Isolation Forest Logs</button>
+                <button class="nav-link {% if model_choice == 'isolation_forest' %}active{% endif %}" id="iso-log-tab"
+                    data-bs-toggle="pill" data-bs-target="#iso-log-content" type="button" role="tab">Isolation Forest
+                    Logs</button>
             </li>
+            {% endif %}
         </ul>
 
         <div class="tab-content" id="logTabContent">
             <!-- AE Logs Table -->
-            <div class="tab-pane fade show active" id="ae-log-content" role="tabpanel">
+            {% if model_choice in ['both', 'autoencoder'] %}
+            <div class="tab-pane fade {% if model_choice in ['both', 'autoencoder'] %}show active{% endif %}"
+                id="ae-log-content" role="tabpanel">
                 <div class="cyber-table table-responsive">
                     <table class="table table-dark table-hover align-middle mb-0" id="aeLogTable">
                         <thead class="bg-dark border-bottom border-secondary text-secondary text-uppercase small">
@@ -378,9 +409,12 @@
                     </table>
                 </div>
             </div>
+            {% endif %}
 
             <!-- Iso Logs Table -->
-            <div class="tab-pane fade" id="iso-log-content" role="tabpanel">
+            {% if model_choice in ['both', 'isolation_forest'] %}
+            <div class="tab-pane fade {% if model_choice == 'isolation_forest' %}show active{% endif %}"
+                id="iso-log-content" role="tabpanel">
                 <div class="cyber-table table-responsive">
                     <table class="table table-dark table-hover align-middle mb-0" id="isoLogTable">
                         <thead class="bg-dark border-bottom border-secondary text-secondary text-uppercase small">
@@ -424,6 +458,7 @@
                     </table>
                 </div>
             </div>
+            {% endif %}
         </div>
     </div>
 

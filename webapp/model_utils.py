@@ -283,9 +283,12 @@ class ModelHandler:
         features = ['response_time', 'bytes', 'status', 'http_method_encoded']
         return df_new[features]
 
-    def analyze(self, file_path):
+    def analyze(self, file_path, model_choice='both'):
         import time
         start_time = time.time()
+        total_time_ae = 0
+        total_time_iso = 0
+        total_time_llm = 0
         
         df = parse_logs(file_path)
         if df.empty:
@@ -297,29 +300,39 @@ class ModelHandler:
         total_logs = len(df)
         
         # Autoencoder Analysis
-        X_ae = self.preprocess_ae(df)
-        reconstructions = self.ae_model.predict(X_ae, verbose=0)
-        mse_vals = np.mean(np.square(X_ae - reconstructions), axis=1)
-        ae_anomalies_mask = mse_vals > self.ae_threshold
-        ae_anomalies = df[ae_anomalies_mask].copy()
-        ae_anomalies['error'] = mse_vals[ae_anomalies_mask]
+        ae_anomalies = pd.DataFrame()
+        ae_anomalies_mask = [False]*total_logs
+        if model_choice in ['both', 'autoencoder']:
+            _ae_st = time.time()
+            X_ae = self.preprocess_ae(df)
+            reconstructions = self.ae_model.predict(X_ae, verbose=0)
+            mse_vals = np.mean(np.square(X_ae - reconstructions), axis=1)
+            ae_anomalies_mask = mse_vals > self.ae_threshold
+            ae_anomalies = df[ae_anomalies_mask].copy()
+            ae_anomalies['error'] = mse_vals[ae_anomalies_mask]
+            total_time_ae += time.time() - _ae_st
         
         # Isolation Forest Analysis
-        X_iso = self.preprocess_iso(df)
-        iso_preds = self.iso_forest.predict(X_iso)
-        iso_scores_all = self.iso_forest.decision_function(X_iso)
-        iso_anomalies_mask = iso_preds == -1
-        
-        # Fallback: if the trained model detects strictly 0 anomalies (perhaps due to 
-        # training contamination mismatch), flag the lowest 5% anomaly scores dynamically.
-        if not iso_anomalies_mask.any() and len(df) > 0:
-            dynamic_thresh = np.percentile(iso_scores_all, 5)
-            # Only apply if it actually isolates a small distinct minority (not the whole set)
-            if dynamic_thresh < np.median(iso_scores_all):
-                iso_anomalies_mask = iso_scores_all <= dynamic_thresh
+        iso_anomalies = pd.DataFrame()
+        iso_anomalies_mask = [False]*total_logs
+        if model_choice in ['both', 'isolation_forest']:
+            _iso_st = time.time()
+            X_iso = self.preprocess_iso(df)
+            iso_preds = self.iso_forest.predict(X_iso)
+            iso_scores_all = self.iso_forest.decision_function(X_iso)
+            iso_anomalies_mask = iso_preds == -1
+            
+            # Fallback: if the trained model detects strictly 0 anomalies (perhaps due to 
+            # training contamination mismatch), flag the lowest 5% anomaly scores dynamically.
+            if not iso_anomalies_mask.any() and len(df) > 0:
+                dynamic_thresh = np.percentile(iso_scores_all, 5)
+                # Only apply if it actually isolates a small distinct minority (not the whole set)
+                if dynamic_thresh < np.median(iso_scores_all):
+                    iso_anomalies_mask = iso_scores_all <= dynamic_thresh
 
-        iso_anomalies = df[iso_anomalies_mask].copy()
-        iso_anomalies['score'] = iso_scores_all[iso_anomalies_mask]
+            iso_anomalies = df[iso_anomalies_mask].copy()
+            iso_anomalies['score'] = iso_scores_all[iso_anomalies_mask]
+            total_time_iso += time.time() - _iso_st
         
         results = {
             "autoencoder": {
@@ -345,25 +358,26 @@ class ModelHandler:
         iso_crit_thresh = np.percentile(iso_anomalies['score'], 10) if not iso_anomalies.empty else float('-inf')
         
         # --- Generate Initial Explanations for ALL Autoencoder Anomalies ---
-        ae_diff = np.square(X_ae.values - reconstructions)
-        ae_feature_names = X_ae.columns.tolist()
-        
-        for idx in ae_anomalies.index:
-            row_idx = df.index.get_loc(idx)
-            row_diff = ae_diff[row_idx]
-            max_feat_idx = np.argmax(row_diff)
-            max_feat = ae_feature_names[max_feat_idx]
-            error_val = float(ae_anomalies.loc[idx, 'error'])
+        if not ae_anomalies.empty:
+            ae_diff = np.square(X_ae.values - reconstructions)
+            ae_feature_names = X_ae.columns.tolist()
             
-            explanation = f"Classified as anomaly due to high reconstruction error in '{max_feat}'."
-            
-            results["autoencoder"]["all_anomalies"].append({
-                "index": int(idx),
-                "log": df.loc[idx].to_dict(),
-                "error": error_val,
-                "explanation": explanation,
-                "is_critical": error_val >= ae_crit_thresh
-            })
+            for idx in ae_anomalies.index:
+                row_idx = df.index.get_loc(idx)
+                row_diff = ae_diff[row_idx]
+                max_feat_idx = np.argmax(row_diff)
+                max_feat = ae_feature_names[max_feat_idx]
+                error_val = float(ae_anomalies.loc[idx, 'error'])
+                
+                explanation = f"Classified as anomaly due to high reconstruction error in '{max_feat}'."
+                
+                results["autoencoder"]["all_anomalies"].append({
+                    "index": int(idx),
+                    "log": df.loc[idx].to_dict(),
+                    "error": error_val,
+                    "explanation": explanation,
+                    "is_critical": error_val >= ae_crit_thresh
+                })
             
         # --- Generate Initial Explanations for ALL Isolation Forest Anomalies ---
         if not iso_anomalies.empty:
@@ -420,7 +434,9 @@ class ModelHandler:
             processed_indices_ae = set()
             for c_id, summary in cluster_summaries_ae.items():
                 if LLM_ENABLED and summary['size'] >= CLUSTER_MIN_SIZE:
+                    _llm_st = time.time()
                     ai_result = classify_cluster(summary)
+                    total_time_llm += time.time() - _llm_st
                 else:
                     ai_result = {"attack_type": "Unclassified Cluster", "severity": "Medium", "reasoning": "Cluster too small or AI disabled.", "common_pattern": "Pattern needs manual review"}
                 
@@ -516,7 +532,9 @@ class ModelHandler:
             processed_indices_iso = set()
             for c_id, summary in cluster_summaries_iso.items():
                 if LLM_ENABLED and summary['size'] >= CLUSTER_MIN_SIZE:
+                    _llm_st = time.time()
                     ai_result = classify_cluster(summary)
+                    total_time_llm += time.time() - _llm_st
                 else:
                     ai_result = {"attack_type": "Unclassified Cluster", "severity": "Medium", "reasoning": "Cluster too small or AI disabled.", "common_pattern": "Pattern needs manual review"}
                 
@@ -600,6 +618,9 @@ class ModelHandler:
                 
         end_time = time.time()
         results["duration"] = round(end_time - start_time, 2)
+        results["duration_ae"] = round(total_time_ae, 2)
+        results["duration_iso"] = round(total_time_iso, 2)
+        results["duration_llm"] = round(total_time_llm, 2)
         return results
 
     def get_top_features(self, shap_values, feature_names, top_n=5):
