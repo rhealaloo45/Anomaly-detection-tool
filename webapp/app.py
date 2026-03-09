@@ -88,6 +88,59 @@ def download_report(model_type, filename):
     report_path = generate_report(model_type, model_results, filename)
     return send_file(report_path, as_attachment=True)
 
+import glob
+from flask import jsonify
+
+def get_latest_results():
+    search_pattern = os.path.join(app.config['UPLOAD_FOLDER'], '*.json')
+    files = glob.glob(search_pattern)
+    if not files:
+        return None
+    latest_file = max(files, key=os.path.getmtime)
+    try:
+        with open(latest_file, 'r') as f:
+            return json.load(f)
+    except Exception:
+        return None
+
+@app.route('/alerts', methods=['GET'])
+def api_alerts():
+    limit = request.args.get('limit', default=1000, type=int)
+    results = get_latest_results()
+    if not results:
+        return jsonify({"error": "No data available"}), 404
+        
+    alerts = []
+    if "autoencoder" in results and "anomalies" in results["autoencoder"]:
+        for a in results["autoencoder"]["anomalies"]:
+            a['source_model'] = 'autoencoder'
+            alerts.append(a)
+            
+    if "isolation_forest" in results and "anomalies" in results["isolation_forest"]:
+        for a in results["isolation_forest"]["anomalies"]:
+            a['source_model'] = 'isolation_forest'
+            alerts.append(a)
+    
+    return jsonify({"alerts": alerts[:limit]})
+
+@app.route('/clusters', methods=['GET'])
+def api_clusters():
+    results = get_latest_results()
+    if not results:
+        return jsonify({"error": "No data available"}), 404
+        
+    clusters = []
+    if "autoencoder" in results and "clusters" in results["autoencoder"]:
+        for c in results["autoencoder"]["clusters"]:
+            c['source_model'] = 'autoencoder'
+            clusters.append(c)
+            
+    if "isolation_forest" in results and "clusters" in results["isolation_forest"]:
+        for c in results["isolation_forest"]["clusters"]:
+            c['source_model'] = 'isolation_forest'
+            clusters.append(c)
+            
+    return jsonify({"clusters": clusters})
+
 if __name__ == '__main__':
     app.run(debug=True, use_reloader=False, port=5000)
-

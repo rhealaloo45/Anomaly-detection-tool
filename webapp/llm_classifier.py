@@ -80,9 +80,13 @@ def classify_cluster(cluster_summary):
     """
     
     try:
-        client = openai.OpenAI(api_key=OPENAI_API_KEY)
+
+        endpoint = "https://rhea-mm1vfuyh-eastus2.cognitiveservices.azure.com/openai/v1/"
+        client = openai.OpenAI(
+            base_url=f"{endpoint}",
+            api_key=OPENAI_API_KEY)
         response = client.chat.completions.create(
-            model="gpt-3.5-turbo",
+            model="gpt-4o-mini",
             messages=[{"role": "user", "content": prompt}],
             max_tokens=400,
             temperature=0.2
