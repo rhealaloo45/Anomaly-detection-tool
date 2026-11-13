@@ -26,7 +26,7 @@ This web application allows security analysts to upload network/server logs (CSV
 
 *   **Backend**: Python, Flask
 *   **ML/Data**: TensorFlow (Keras), Scikit-Learn, Pandas, NumPy, SHAP
-*   **AI**: OpenAI API (GPT-3.5 Turbo)
+*   **AI**: OpenAI API (gpt-4o-mini)
 *   **Frontend**: HTML5, Bootstrap 5, Chart.js, Vanilla CSS
 *   **Reporting**: FPDF
 
